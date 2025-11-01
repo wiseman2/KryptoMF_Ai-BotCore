@@ -1,0 +1,40 @@
+# KryptoMF Bot Core - Open Source Dependencies
+
+# Exchange Integration
+ccxt>=4.0.0                    # Cryptocurrency exchange integration
+ccxt.pro>=4.0.0                # WebSocket support for real-time data
+
+# Data Processing
+pandas>=2.0.0                  # Data manipulation and analysis
+numpy>=1.24.0                  # Numerical computing
+
+# Configuration
+pyyaml>=6.0                    # YAML configuration files
+python-dotenv>=1.0.0           # Environment variable management
+
+# Security (CRITICAL - Open Source for Auditability)
+cryptography>=41.0.0           # Encryption for key storage
+keyring>=24.0.0                # OS keychain integration
+
+# Networking
+requests>=2.31.0               # HTTP requests
+websockets>=11.0               # WebSocket client
+aiohttp>=3.8.0                 # Async HTTP client
+
+# Database
+sqlalchemy>=2.0.0              # Database ORM
+alembic>=1.12.0                # Database migrations
+
+# Utilities
+python-dateutil>=2.8.0         # Date/time utilities
+pytz>=2023.3                   # Timezone support
+colorama>=0.4.6                # Colored console output
+
+# Logging
+loguru>=0.7.0                  # Advanced logging
+
+# Testing (optional, see requirements-dev.txt)
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+# pytest-cov>=4.1.0
+

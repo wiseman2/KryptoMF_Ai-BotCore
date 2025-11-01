@@ -1,0 +1,48 @@
+# KryptoMF Bot Core - Example Configuration
+#
+# Copy this file to bot_config.yaml and customize for your needs.
+# API keys will be stored securely in your OS keychain.
+
+# Exchange configuration
+exchange: binance_us  # Options: binance_us, coinbase, kraken
+
+# Trading pair
+symbol: BTC/USD
+
+# Strategy selection
+strategy: grid_trading  # Options: grid_trading, dca, momentum
+
+# Strategy parameters
+strategy_params:
+  # Grid Trading
+  grid_spacing: 2.5        # Percentage spacing between grid levels
+  grid_levels: 10          # Number of grid levels
+  position_size: 100       # Position size in USD per level
+  
+  # DCA (if using dca strategy)
+  # interval_hours: 24
+  # amount_usd: 100
+  
+  # Momentum (if using momentum strategy)
+  # lookback_periods: 14
+  # threshold: 2.0
+
+# Risk management
+risk:
+  max_position_size: 1000  # Maximum total position size in USD
+  stop_loss_percent: 5     # Stop loss percentage
+  take_profit_percent: 10  # Take profit percentage (optional)
+
+# Paper trading mode (no real orders)
+paper_trading: false
+
+# Logging
+logging:
+  level: INFO              # Options: DEBUG, INFO, WARNING, ERROR
+  file: logs/bot.log       # Log file path (optional)
+
+# API credentials (will be stored in OS keychain)
+# You can set these here for initial setup, then they'll be moved to keychain
+# api_key: your_api_key_here
+# api_secret: your_api_secret_here
+
