@@ -68,22 +68,70 @@ class ExchangePlugin(ABC):
         side: str,
         amount: float,
         price: Optional[float] = None,
-        order_type: str = 'limit'
+        order_type: str = 'limit',
+        params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Place an order.
-        
+
         Args:
             symbol: Trading pair (e.g., 'BTC/USD')
             side: 'buy' or 'sell'
             amount: Order amount
             price: Order price (None for market orders)
-            order_type: 'limit' or 'market'
-            
+            order_type: 'limit', 'market', 'stop_loss', 'stop_loss_limit', 'take_profit', 'take_profit_limit'
+            params: Additional exchange-specific parameters (e.g., trailing orders)
+
         Returns:
             Order details
         """
         pass
+
+    def place_trailing_order(
+        self,
+        symbol: str,
+        side: str,
+        amount: float,
+        trailing_percent: float,
+        price: Optional[float] = None,
+        order_type: str = 'limit'
+    ) -> Dict[str, Any]:
+        """
+        Place a trailing order (if supported by exchange).
+
+        Trailing orders automatically adjust the trigger price as the market moves
+        in a favorable direction. This helps protect profits and limit losses.
+
+        For trailing sell: Order price trails below market price by trailing_percent.
+        For trailing buy: Order price trails above market price by trailing_percent.
+
+        Args:
+            symbol: Trading pair (e.g., 'BTC/USD')
+            side: 'buy' or 'sell'
+            amount: Order amount
+            trailing_percent: Percentage to trail (e.g., 1.0 for 1%)
+            price: Initial price (optional, uses market price if None)
+            order_type: 'limit' or 'market'
+
+        Returns:
+            Order details
+
+        Raises:
+            NotImplementedError: If exchange doesn't support trailing orders
+        """
+        raise NotImplementedError(
+            f"{self.name} does not support trailing orders. "
+            "Override this method in the exchange plugin if supported."
+        )
+
+    def supports_trailing_orders(self) -> bool:
+        """
+        Check if exchange supports trailing orders.
+
+        Returns:
+            True if trailing orders are supported
+        """
+        return False
     
     @abstractmethod
     def cancel_order(self, order_id: str, symbol: str) -> bool:

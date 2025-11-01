@@ -127,21 +127,25 @@ class CCXTExchange(ExchangePlugin):
         side: str,
         amount: float,
         price: Optional[float] = None,
-        order_type: str = 'limit'
+        order_type: str = 'limit',
+        params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Place an order.
-        
+
         Args:
             symbol: Trading pair (e.g., 'BTC/USD')
             side: 'buy' or 'sell'
             amount: Order amount
             price: Order price (None for market orders)
-            order_type: 'limit' or 'market'
-            
+            order_type: 'limit', 'market', 'stop_loss', 'stop_loss_limit', etc.
+            params: Additional exchange-specific parameters
+
         Returns:
             Order details
         """
+        if params is None:
+            params = {}
         if self.paper_trading:
             logger.warning(f"⚠️  PAPER TRADING - Would place {side} {order_type} order: "
                           f"{amount} {symbol} @ {price}")
@@ -157,16 +161,23 @@ class CCXTExchange(ExchangePlugin):
             }
         
         logger.info(f"Placing {side} {order_type} order: {amount} {symbol} @ {price}")
-        
+        if params:
+            logger.info(f"  Additional params: {params}")
+
         try:
-            if order_type == 'market':
-                order = self.exchange.create_market_order(symbol, side, amount)
-            else:
-                order = self.exchange.create_limit_order(symbol, side, amount, price)
-            
+            # Use create_order for maximum flexibility with params
+            order = self.exchange.create_order(
+                symbol=symbol,
+                type=order_type,
+                side=side,
+                amount=amount,
+                price=price,
+                params=params
+            )
+
             logger.info(f"✓ Order placed: {order['id']}")
             return order
-            
+
         except Exception as e:
             logger.error(f"Failed to place order: {e}")
             raise
@@ -285,16 +296,127 @@ class CCXTExchange(ExchangePlugin):
     ) -> List[List]:
         """
         Get historical OHLCV data.
-        
+
         Args:
             symbol: Trading pair
             timeframe: Timeframe (e.g., '1m', '5m', '1h', '1d')
             since: Start timestamp (milliseconds)
             limit: Number of candles
-            
+
         Returns:
             List of OHLCV candles [timestamp, open, high, low, close, volume]
         """
         logger.debug(f"Fetching {timeframe} candles for {symbol}")
         return self.exchange.fetch_ohlcv(symbol, timeframe, since, limit)
+
+    def supports_trailing_orders(self) -> bool:
+        """
+        Check if exchange supports trailing orders.
+
+        Different exchanges have different support for trailing orders.
+        Binance, Binance.US, and some others support them.
+
+        Returns:
+            True if trailing orders are supported
+        """
+        # List of exchanges known to support trailing orders
+        trailing_supported = [
+            'binance',
+            'binanceus',
+            'binanceusdm',  # Binance USD-M Futures
+            'binancecoinm',  # Binance COIN-M Futures
+        ]
+
+        exchange_id = self.exchange.id.lower()
+        return exchange_id in trailing_supported
+
+    def place_trailing_order(
+        self,
+        symbol: str,
+        side: str,
+        amount: float,
+        trailing_percent: float,
+        price: Optional[float] = None,
+        order_type: str = 'limit'
+    ) -> Dict[str, Any]:
+        """
+        Place a trailing order (if supported by exchange).
+
+        For Binance/Binance.US:
+        - Trailing orders use the 'trailingPercent' parameter
+        - The order trails the market price by the specified percentage
+
+        Args:
+            symbol: Trading pair (e.g., 'BTC/USD')
+            side: 'buy' or 'sell'
+            amount: Order amount
+            trailing_percent: Percentage to trail (e.g., 1.0 for 1%)
+            price: Initial price (optional, uses market price if None)
+            order_type: 'limit' or 'market'
+
+        Returns:
+            Order details
+
+        Raises:
+            NotImplementedError: If exchange doesn't support trailing orders
+        """
+        if not self.supports_trailing_orders():
+            raise NotImplementedError(
+                f"{self.exchange.id} does not support trailing orders. "
+                "Consider implementing bot-managed trailing orders instead."
+            )
+
+        exchange_id = self.exchange.id.lower()
+
+        # Binance-style trailing orders
+        if exchange_id in ['binance', 'binanceus', 'binanceusdm', 'binancecoinm']:
+            params = {
+                'trailingPercent': trailing_percent,  # Percentage away from current market price
+            }
+
+            # For Binance, trailing orders are typically stop-loss or take-profit orders
+            if side == 'sell':
+                # Trailing sell (stop-loss that trails up)
+                order_type_to_use = 'TRAILING_STOP_MARKET'
+            else:
+                # Trailing buy (less common, but supported)
+                order_type_to_use = 'TRAILING_STOP_MARKET'
+
+            logger.info(f"Placing trailing {side} order: {amount} {symbol}")
+            logger.info(f"  Trailing percent: {trailing_percent}%")
+            logger.info(f"  Order type: {order_type_to_use}")
+
+            if self.paper_trading:
+                logger.warning(f"⚠️  PAPER TRADING - Would place trailing {side} order")
+                return {
+                    'id': 'paper_trailing_' + str(hash(f"{symbol}{side}{amount}{trailing_percent}")),
+                    'symbol': symbol,
+                    'side': side,
+                    'type': order_type_to_use,
+                    'amount': amount,
+                    'status': 'open',
+                    'info': {'trailingPercent': trailing_percent}
+                }
+
+            try:
+                order = self.exchange.create_order(
+                    symbol=symbol,
+                    type=order_type_to_use,
+                    side=side,
+                    amount=amount,
+                    price=None,  # Market price for trailing orders
+                    params=params
+                )
+
+                logger.info(f"✓ Trailing order placed: {order['id']}")
+                return order
+
+            except Exception as e:
+                logger.error(f"Failed to place trailing order: {e}")
+                raise
+
+        # Other exchanges - would need specific implementation
+        raise NotImplementedError(
+            f"Trailing orders not yet implemented for {self.exchange.id}"
+        )
 
