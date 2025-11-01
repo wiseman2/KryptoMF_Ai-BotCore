@@ -1,4 +1,4 @@
-# KryptoMF_Ai Bot Core
+# KryptoMF_Ai Bot Core - Still  in Developement!
 
 ## 🆓 Open Source Trading Bot Engine
 
