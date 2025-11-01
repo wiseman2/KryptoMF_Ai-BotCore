@@ -1,4 +1,4 @@
-# KryptoMF_Ai Bot Core
+# KryptoMF_Ai Bot Core- Still in Developement! Not Functional
 
 ## 🆓 Open Source Trading Bot Engine
 
@@ -6,16 +6,22 @@ The **KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency t
 
 ## ✨ Features
 
-- ✅ **Fully functional CLI bot** - Works just like FlexGrid
+### Core Functionality
+- ✅ **Fully functional CLI bot** - Works standalone without any GUI
 - ✅ **Run from code editor** - PyCharm, VS Code, or any Python environment
 - ✅ **Simple configuration** - YAML/JSON files or interactive prompts
 - ✅ **Console monitoring** - Clear print statements showing all activity
 - ✅ **All exchange connectors** - Binance.US, Coinbase, Kraken, and more
-- ✅ **Basic strategies** - Grid trading, DCA, momentum
-- ✅ **Technical indicators** - MACD, RSI, EMA, Bollinger Bands
-- ✅ **Backtesting framework** - Test strategies on historical data
 - ✅ **Security-critical code** - Key storage and order signing (auditable)
 - ✅ **Plugin system** - Create and share your own plugins
+
+### Advanced Trading Strategies
+- ✅ **Enhanced Grid Trading** - Indicator-validated grid orders (no blind buying)
+- ✅ **Advanced DCA** - Profit application from subsequent sales to reduce cost basis
+- ✅ **Enhanced DCA** - Indicator-based buying instead of time-based intervals
+- ✅ **Trailing Orders** - Exchange-native trailing orders (Binance/Binance.US)
+- ✅ **Technical Indicators** - RSI, MACD, EMA, Stochastic RSI, MFI, and more
+- ✅ **Configurable Everything** - Select indicators, adjust thresholds, customize strategies
 
 ## 🚀 Quick Start
 
@@ -83,7 +89,49 @@ python cli.py --config config/bot_config.yaml --paper-trading
 
 ## 📖 Documentation
 
-See the [docs/](docs/) directory for detailed documentation.
+### Getting Started
+- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
+- **[Strategy Enhancements](STRATEGY_ENHANCEMENTS.md)** - Detailed guide to advanced DCA, enhanced strategies, and trailing orders
+- **[Configuration Example](config/strategy_config_example.yaml)** - Comprehensive configuration template with all options
+
+### Development
+- **[Build Guide](BUILD.md)** - How to build standalone executables
+- **[Contributing](CONTRIBUTING.md)** - How to contribute to the project
+- **[Testing Guide](TESTING.md)** - How to run tests and write new ones
+
+### Key Features Documentation
+
+#### Advanced DCA Strategy
+The advanced DCA strategy applies profit from subsequent sales to reduce the cost basis of previous purchases, making them easier to sell at profit. See [STRATEGY_ENHANCEMENTS.md](STRATEGY_ENHANCEMENTS.md#1-advanced-dca-strategy-advanced_dcapy) for details.
+
+**Example:**
+```
+Buy #1: 1 BTC @ $50,000
+Buy #2: 1 BTC @ $48,000
+Sell #2: 1 BTC @ $49,000 (profit: $1,000)
+
+After applying profit to Buy #1:
+Buy #1 new cost: $49,240 (reduced from $50,000)
+```
+
+#### Enhanced DCA with Indicators
+Instead of time-based buying, the enhanced DCA uses technical indicators (RSI, MACD, EMA, etc.) to identify optimal entry points. See [STRATEGY_ENHANCEMENTS.md](STRATEGY_ENHANCEMENTS.md#2-enhanced-dca-strategy-dcapy) for configuration.
+
+#### Grid Trading with Indicator Validation
+Grid orders are validated with technical indicators before placement to prevent blind buying in unfavorable market conditions. See [STRATEGY_ENHANCEMENTS.md](STRATEGY_ENHANCEMENTS.md#3-grid-trading-strategy-grid_tradingpy) for details.
+
+#### Exchange-Native Trailing Orders
+For exchanges that support it (Binance/Binance.US), trailing orders are placed directly on the exchange to protect against power outages, internet issues, and computer crashes. See [STRATEGY_ENHANCEMENTS.md](STRATEGY_ENHANCEMENTS.md#4-trailing-order-support) for implementation details.
+
+**⚠️ Important:** Always place trailing sell orders immediately after buy orders to protect your position even if the bot crashes.
+
+## 🔗 Related Projects
+
+This is part of the **KryptoMF_Ai Ecosystem**:
+
+- **[KryptoMF_Ai-BotCore](https://github.com/yourusername/KryptoMF_Ai-BotCore)** (This Repository) - Open-source CLI trading bot engine
+- **[KryptoMF_Ai-BotDashboard](https://github.com/yourusername/KryptoMF_Ai-BotDashboard)** - Premium GUI for multi-bot management
+- **[KryptoMF_Ai Web Platform](https://kryptomultiflexai.com)** - AI signal subscription service
 
 ## 📝 License
 
