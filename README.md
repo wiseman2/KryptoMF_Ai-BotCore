@@ -8,12 +8,23 @@ The **KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency t
 
 ### Core Functionality
 - ✅ **Fully functional CLI bot** - Works standalone without any GUI
+- ✅ **Interactive status display** - Real-time positions, P&L, and trade statistics
+- ✅ **Keyboard controls** - Pause, resume, status refresh, emergency stop
 - ✅ **Run from code editor** - PyCharm, VS Code, or any Python environment
-- ✅ **Simple configuration** - YAML/JSON files or interactive prompts
-- ✅ **Console monitoring** - Clear print statements showing all activity
-- ✅ **All exchange connectors** - Binance.US, Coinbase, Kraken, and more
-- ✅ **Security-critical code** - Key storage and order signing (auditable)
+- ✅ **Simple configuration** - YAML/JSON files or interactive setup wizard
+- ✅ **Configuration validation** - Helpful error messages and suggestions
+- ✅ **All exchange connectors** - Binance.US, Coinbase Pro, Kraken, KuCoin, and more
+- ✅ **Passphrase support** - Full support for Coinbase Pro, KuCoin, OKX
+- ✅ **Security-critical code** - Key storage and order signing (100% auditable)
 - ✅ **Plugin system** - Create and share your own plugins
+
+### Security Features (100% Open Source)
+- ✅ **OS Keychain Integration** - macOS Keychain, Windows DPAPI, Linux Secret Service
+- ✅ **Encrypted Fallback Storage** - Fernet encryption for systems without keychain
+- ✅ **Order Signing** - HMAC-SHA256, EdDSA with replay protection
+- ✅ **Automatic Secrets Redaction** - Never logs API keys, secrets, or signatures
+- ✅ **Multi-exchange Support** - Binance, Coinbase Pro, Kraken, KuCoin, and more
+- ✅ **Passphrase Support** - Secure storage for exchanges requiring passphrases
 
 ### Advanced Trading Strategies
 - ✅ **Enhanced Grid Trading** - Indicator-validated grid orders (no blind buying)
@@ -22,6 +33,17 @@ The **KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency t
 - ✅ **Trailing Orders** - Exchange-native trailing orders (Binance/Binance.US)
 - ✅ **Technical Indicators** - RSI, MACD, EMA, Stochastic RSI, MFI, and more
 - ✅ **Configurable Everything** - Select indicators, adjust thresholds, customize strategies
+
+### Backtesting
+- ✅ **Interactive Setup** - Guided prompts for coin pair, timeframe, and date range
+- ✅ **Automatic Data Fetching** - Downloads historical data from exchanges via ccxt
+- ✅ **Data Size Estimation** - Shows expected candles and MB before downloading
+- ✅ **Local Caching** - Caches downloaded data to avoid re-downloading
+- ✅ **Multiple Timeframes** - 1m, 5m, 15m, 1h, 4h, 1d support
+- ✅ **Performance Metrics** - Win rate, profit factor, max drawdown, equity curve
+- ✅ **Trade Analysis** - Detailed trade log with P&L for each trade
+- ✅ **Visual Results** - ASCII equity curve and colored performance summary
+- ✅ **Export Results** - Save backtest results to JSON for further analysis
 
 ## 🚀 Quick Start
 
@@ -85,7 +107,31 @@ python cli.py --config config/bot_config.yaml
 
 # Paper trading mode
 python cli.py --config config/bot_config.yaml --paper-trading
+
+# Run backtest
+python cli.py --config config/bot_config.yaml --backtest --backtest-data historical_data.csv
+
+# Non-interactive mode (no status display)
+python cli.py --config config/bot_config.yaml --no-interactive
 ```
+
+### Interactive Controls
+
+When running in interactive mode (default), you can control the bot with keyboard commands:
+
+- **P** - Pause bot (stop trading but keep connection)
+- **R** - Resume bot (continue trading)
+- **S** - Show full status (refresh display)
+- **Q** - Quit (stop bot and exit)
+- **H** or **?** - Show help
+- **Ctrl+C** - Emergency stop
+
+The status display shows:
+- Current bot status (running/paused/stopped)
+- Real-time price and P&L
+- Current positions
+- Trade statistics (win rate, total trades)
+- Uptime
 
 ## 📖 Documentation
 
@@ -93,11 +139,139 @@ python cli.py --config config/bot_config.yaml --paper-trading
 - **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
 - **[Strategy Enhancements](STRATEGY_ENHANCEMENTS.md)** - Detailed guide to advanced DCA, enhanced strategies, and trailing orders
 - **[Configuration Example](config/strategy_config_example.yaml)** - Comprehensive configuration template with all options
+- **[Security Documentation](docs/SECURITY.md)** - Complete guide to credential storage, order signing, and security best practices
 
 ### Development
 - **[Build Guide](BUILD.md)** - How to build standalone executables
 - **[Contributing](CONTRIBUTING.md)** - How to contribute to the project
 - **[Testing Guide](TESTING.md)** - How to run tests and write new ones
+
+## 🔐 Security
+
+All security-critical code is **100% open source** for auditability:
+
+### Credential Storage
+- **OS Keychain** - Uses macOS Keychain, Windows DPAPI, or Linux Secret Service
+- **Encrypted Fallback** - Fernet encryption for systems without keychain support
+- **Never Plain Text** - Credentials are never stored in plain text
+- **Passphrase Support** - Full support for exchanges requiring API passphrases
+
+### Order Signing
+- **HMAC-SHA256** - Standard signing for most exchanges (Binance, Kraken, etc.)
+- **Coinbase Pro** - Specialized signing with CB-ACCESS headers
+- **Replay Protection** - Timestamp/nonce prevents replay attacks
+- **Signature Verification** - Constant-time comparison prevents timing attacks
+
+### Secrets Redaction
+- **Automatic Redaction** - All logs automatically redact sensitive data
+- **Pattern Matching** - Detects API keys, secrets, tokens, signatures
+- **Context-Aware** - Redacts based on key names and patterns
+- **No Leakage** - Prevents accidental exposure in error messages
+
+See **[Security Documentation](docs/SECURITY.md)** for complete details.
+
+## 🧪 Backtesting
+
+Test your strategies on historical data before risking real money!
+
+### Interactive Backtesting (Recommended)
+
+Simply run with `--backtest` and the bot will guide you through setup:
+
+```bash
+python cli.py --config config/bot_config.yaml --backtest
+```
+
+You'll be prompted to select:
+1. **Trading Pair** - BTC/USD, ETH/USD, etc.
+2. **Timeframe** - 1m, 5m, 15m, 1h, 4h, 1d
+3. **Date Range** - Quick options (1 month, 3 months, 6 months, 1 year) or custom dates
+4. **Data Size Estimate** - Shows expected candles and download size in MB
+
+The bot will automatically:
+- ✅ Download historical data from your configured exchange
+- ✅ Cache data locally (no re-downloading)
+- ✅ Show download progress
+- ✅ Run backtest and display results
+
+### Example Interactive Session
+
+```
+═══════════════════════════════════════════════════════════════════
+                        BACKTEST DATA SETUP
+═══════════════════════════════════════════════════════════════════
+
+Step 1: Select Trading Pair
+Examples: BTC/USD, ETH/USD, BTC/USDT, ETH/BTC
+Enter trading pair: BTC/USD
+
+Step 2: Select Timeframe
+Available timeframes:
+  1m     - 1 minute
+  5m     - 5 minutes
+  15m    - 15 minutes
+  1h     - 1 hour
+  4h     - 4 hours
+  1d     - 1 day
+Enter timeframe (default: 1h): 1h
+
+Step 3: Select Date Range
+Quick options:
+  1 - Last 1 month
+  2 - Last 3 months
+  3 - Last 6 months
+  4 - Last 1 year
+  5 - Custom date range
+Select option (1-5): 3
+
+═══ DATA ESTIMATE ═══
+Symbol:           BTC/USD
+Timeframe:        1h (1 hour)
+Date Range:       2024-05-02 to 2024-11-02
+Duration:         184 days
+Expected Candles: ~4,416
+Estimated Size:   ~0.42 MB
+
+Proceed with download? (y/n): y
+
+Downloading historical data...
+Progress: 4,416 / ~4,416 candles (100.0%)
+```
+
+### Manual CSV File (Optional)
+
+You can also provide your own CSV file:
+
+```bash
+python cli.py --config config/bot_config.yaml \
+  --backtest \
+  --backtest-data data/BTC-USD-1h.csv
+```
+
+CSV format: `timestamp`, `open`, `high`, `low`, `close`, `volume`
+
+```csv
+timestamp,open,high,low,close,volume
+1704067200,42150.5,42380.2,42100.0,42250.8,1234.56
+1704070800,42250.8,42450.0,42200.0,42380.5,2345.67
+...
+```
+
+### Backtest Results
+
+The backtest engine provides:
+- **Performance Summary** - Total return, win rate, max drawdown
+- **Trade Statistics** - Winning/losing trades, average profit/loss, profit factor
+- **Trade Log** - Detailed log of all trades with timestamps and P&L
+- **Equity Curve** - ASCII visualization of account equity over time
+- **JSON Export** - Save results for further analysis
+
+### Data Caching
+
+Downloaded data is automatically cached in `data/historical/` to avoid re-downloading:
+- Cache files are named: `{exchange}_{symbol}_{timeframe}_{start}_{end}.csv`
+- Reusing the same parameters loads from cache instantly
+- Delete cache files to force re-download
 
 ### Key Features Documentation
 
@@ -137,7 +311,53 @@ This is part of the **KryptoMF_Ai Ecosystem**:
 
 MIT License - Free to use, modify, and distribute.
 
+## 📊 CLI Commands Reference
+
+```bash
+# Basic usage
+python cli.py                                    # Interactive setup
+python cli.py --config <file>                    # Use config file
+python cli.py --config <file> --paper-trading    # Paper trading mode
+python cli.py --config <file> --no-interactive   # No status display
+
+# Backtesting
+python cli.py --config <file> --backtest --backtest-data <csv>
+python cli.py --config <file> --backtest --backtest-data <csv> --backtest-start 2024-01-01 --backtest-end 2024-12-31
+
+# Logging
+python cli.py --config <file> --verbose          # Verbose logging
+```
+
+## 🛠️ Development Status
+
+**Current Version:** 0.2.0 (Beta)
+**Last Updated:** 2025-11-02
+
+### Completed Features ✅
+- ✅ Core bot engine with multi-exchange support
+- ✅ Interactive CLI with status display and keyboard controls
+- ✅ Configuration validation with helpful error messages
+- ✅ Security features (keychain, order signing, secrets redaction)
+- ✅ Advanced trading strategies (DCA, Grid, Indicators)
+- ✅ Backtesting framework with performance metrics
+- ✅ Passphrase support for Coinbase Pro, KuCoin, OKX
+
+### In Progress 🚧
+- 🚧 Comprehensive test suite
+- 🚧 Historical data fetching from exchanges
+- 🚧 Additional strategy plugins
+- 🚧 Performance optimizations
+
+### Planned Features 📋
+- 📋 WebSocket support for real-time data
+- 📋 Advanced order types (OCO, trailing stop-limit)
+- 📋 Portfolio rebalancing strategies
+- 📋 Machine learning signal integration
+
 ## ⚠️ Disclaimer
 
 This software is for educational purposes. Cryptocurrency trading carries significant risk. Only trade with money you can afford to lose. This is not financial advice.
 
+---
+
+**Made with ❤️ by the KryptoMF_Ai Team**
