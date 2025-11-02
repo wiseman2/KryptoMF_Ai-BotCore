@@ -1,22 +1,62 @@
-MIT License
+Polyform Noncommercial License 1.0.0
 
-Copyright (c) 2025 KryptoMF_Ai
+Copyright (c) 2024-2025 KnottyBranch (Ken Wiseman)
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+The Licensor hereby grants permission by this license ("License"), free of charge, to any person or entity (the "Licensee") obtaining a copy of this software and associated documentation files (the "Software"), to use, copy, modify, and share the Software, subject to the following terms.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. Conditions
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+1.1 Noncommercial Use Only
+The Licensee may not use the Software for a Commercial Purpose. "Commercial Purpose" means the use of the Software by or for the benefit of a person or entity to generate revenue, directly or indirectly, including but not limited to: selling, leasing, hosting as a service, offering paid support or services that include the Software, embedding the Software in a paid product or internal business systems, or using the Software to provide services to third parties for a fee. Noncommercial use includes personal use, research, teaching, open-source collaboration, and distribution at no charge.
 
+1.2 Notices
+The Licensee must retain the following in all copies or substantial portions of the Software and any derivative works:
+- this License text,
+- a copyright notice,
+- a notice of any changes made.
+
+1.3 No Trademark License
+This License does not grant permission to use the trade names, trademarks, service marks, or logos of the Licensor.
+
+2. Permissions
+
+Subject to Section 1, the Licensee may:
+- use the Software;
+- copy and modify the Software;
+- distribute the Software, with or without modifications, provided distribution is not for a Commercial Purpose.
+
+3. Acceptable Noncommercial Redistribution
+
+Redistribution of the Software or derivative works is permitted at no charge (free of any monetary compensation). The Licensee may solicit voluntary donations that do not condition access to the Software.
+
+4. Patents
+
+The Licensor grants the Licensee a nonexclusive, worldwide, royalty-free patent license under the Licensor's patent claims that are necessarily infringed by the Licensor's contributions to the Software, to make, have made, use, sell, offer to sell, import, and otherwise transfer the Software, solely for uses permitted by this License.
+
+5. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+6. Termination
+
+This License terminates automatically if the Licensee violates any term. Upon termination, the Licensee must stop all use and distribution of the Software and destroy copies in their possession. Sections 3–7 survive termination.
+
+7. Commercial Licensing
+
+Commercial use is available under a separate commercial license from the Licensor. Contact: kryptomfai@gmail.com or visit https://kryptomfai.com for more information.
+
+8. Entire License
+
+This is the entire license agreement between the parties concerning the Software. If any provision is unenforceable, the remainder remains in effect.
+
+END OF TERMS
+
+---
+
+Project: KryptoMF_AI-BotCore
+Copyright Holder: KnottyBranch (Ken Wiseman)
+Contact: kryptomfai@gmail.com
+Website: https://kryptomfai.com | https://kryptomfai.net
+
+For the authoritative Polyform Noncommercial 1.0.0 license text, see:
+https://polyformproject.org/licenses/noncommercial/1.0.0/

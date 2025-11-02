@@ -121,10 +121,12 @@ class BotInstance:
         
         # Store API credentials if provided
         if 'api_key' in self.config and 'api_secret' in self.config:
+            passphrase = self.config.get('passphrase')  # May be None
             self.secret_provider.store_key(
                 self.exchange_id,
                 self.config['api_key'],
-                self.config['api_secret']
+                self.config['api_secret'],
+                passphrase
             )
         
         # Connect

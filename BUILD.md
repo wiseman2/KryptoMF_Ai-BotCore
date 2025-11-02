@@ -8,14 +8,9 @@ This guide explains how to build standalone executables for non-technical users 
 - **File**: `KryptoMF-Bot.exe` (Windows) or `KryptoMF-Bot` (Mac/Linux)
 - **Size**: ~50-80 MB
 - **Includes**: Core bot engine, all strategies, exchange connectors
-- **Excludes**: GUI components
 - **Mode**: Console application
 
-### GUI Executable (Premium)
-- **File**: `KryptoMF-Bot-GUI.exe` (Windows) or `KryptoMF-Bot-GUI` (Mac/Linux)
-- **Size**: ~100-150 MB
-- **Includes**: Everything in CLI + Premium GUI
-- **Mode**: Windowed application (no console)
+
 
 ## 🛠️ Prerequisites
 
@@ -35,14 +30,7 @@ pyinstaller build.spec
 
 Output: `dist/KryptoMF-Bot.exe`
 
-### Build GUI Executable (Premium)
 
-```bash
-cd Public/KryptoMF_Ai-BotDashboard
-pyinstaller build_gui.spec
-```
-
-Output: `dist/KryptoMF-Bot-GUI.exe`
 
 ## 📋 Build Options
 
@@ -264,7 +252,7 @@ jobs:
 | Build | Windows | macOS | Linux |
 |-------|---------|-------|-------|
 | CLI | 60 MB | 65 MB | 70 MB |
-| GUI | 120 MB | 130 MB | 125 MB |
+
 
 ## 🐛 Troubleshooting
 

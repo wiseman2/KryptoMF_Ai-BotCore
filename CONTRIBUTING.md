@@ -208,7 +208,23 @@ def test_feature_name():
 
 ## ⚖️ License
 
-By contributing, you agree that your contributions will be licensed under the MIT License.
+By contributing, you agree that:
+
+1. **Your contributions are your own work** - You have the right to submit them
+2. **You grant us a license** - To use your contributions under the project's license
+3. **Your contributions are licensed** - Under the Polyform Noncommercial License 1.0.0
+4. **We may dual-license** - We reserve the right to offer commercial licenses
+
+### Important Notes
+
+- **Noncommercial License** - This project uses Polyform Noncommercial, not MIT
+- **Commercial Use** - Requires a separate commercial license from KnottyBranch
+- **Your Rights** - You retain copyright to your contributions
+- **Our Rights** - We can use contributions in both free and commercial versions
+
+For more details, see the [LICENSE](LICENSE) file.
+
+**Contact:** kryptomfai@gmail.com | https://kryptomfai.com
 
 ## ❓ Questions?
 
