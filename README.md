@@ -417,49 +417,6 @@ python cli.py --config <file> --verbose          # Verbose logging
 - 📋 Portfolio rebalancing strategies
 - 📋 Machine learning signal integration
 
-## 📊 CLI Commands Reference
-
-```bash
-# Basic usage
-python cli.py                                    # Interactive setup
-python cli.py --config <file>                    # Use config file
-python cli.py --config <file> --paper-trading    # Paper trading mode
-python cli.py --config <file> --no-interactive   # No status display
-
-# Backtesting
-python cli.py --config <file> --backtest --backtest-data <csv>
-python cli.py --config <file> --backtest --backtest-data <csv> --backtest-start 2024-01-01 --backtest-end 2024-12-31
-
-# Logging
-python cli.py --config <file> --verbose          # Verbose logging
-```
-
-## 🛠️ Development Status
-
-**Current Version:** 0.2.0 (Beta)
-**Last Updated:** 2025-11-02
-
-### Completed Features ✅
-- ✅ Core bot engine with multi-exchange support
-- ✅ Interactive CLI with status display and keyboard controls
-- ✅ Configuration validation with helpful error messages
-- ✅ Security features (keychain, order signing, secrets redaction)
-- ✅ Advanced trading strategies (DCA, Grid, Indicators)
-- ✅ Backtesting framework with performance metrics
-- ✅ Passphrase support for Coinbase Pro, KuCoin, OKX
-
-### In Progress 🚧
-- 🚧 Comprehensive test suite
-- 🚧 Historical data fetching from exchanges
-- 🚧 Additional strategy plugins
-- 🚧 Performance optimizations
-
-### Planned Features 📋
-- 📋 WebSocket support for real-time data
-- 📋 Advanced order types (OCO, trailing stop-limit)
-- 📋 Portfolio rebalancing strategies
-- 📋 Machine learning signal integration
-
 ## ⚠️ Disclaimer
 
 This software is for educational purposes. Cryptocurrency trading carries significant risk. Only trade with money you can afford to lose. This is not financial advice.

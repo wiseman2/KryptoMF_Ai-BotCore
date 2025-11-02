@@ -291,4 +291,3 @@ jobs:
 - [Code Signing Guide](https://pyinstaller.org/en/stable/usage.html#code-signing)
 - [NSIS Installer](https://nsis.sourceforge.io/)
 - [Inno Setup](https://jrsoftware.org/isinfo.php)
-
