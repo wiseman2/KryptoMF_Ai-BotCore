@@ -111,7 +111,25 @@ class DCAStrategy(StrategyPlugin):
         self.total_purchased = 0.0
         self.total_spent = 0.0
         self.purchase_count = 0
+        self.pending_sell_order = None  # Track pending sell order
         self.bot = None
+
+        # Trailing state (for bot-managed trailing orders)
+        self.trailing_state = {
+            'status': 'inactive',  # inactive, waiting, active, triggered
+            'direction': None,  # 'up' for sell trailing, 'down' for buy trailing
+            'activation_price': None,  # Price to start trailing
+            'watermark': None,  # Highest (sell) or lowest (buy) price seen while trailing
+            'trailing_percent': None,  # Trailing percentage
+            'last_update': None  # Last time watermark was updated
+        }
+
+        # Smart indicator checking
+        self.smart_checks = config.get('smart_indicator_checks', True)
+        self.min_price_change_percent = config.get('min_price_change_percent', 0.5)  # Only check if price moved this much
+        self.ohlcv_cache = None  # Cache OHLCV data
+        self.ohlcv_cache_time = 0
+        self.ohlcv_cache_ttl = config.get('indicator_cache_ttl', 300)  # Cache for 5 minutes
 
         logger.info(f"Enhanced DCA Strategy initialized:")
         logger.info(f"  Amount: ${self.amount_usd} per purchase")
@@ -131,12 +149,40 @@ class DCAStrategy(StrategyPlugin):
     def initialize(self, bot_instance):
         """
         Initialize strategy with bot instance.
-        
+
         Args:
             bot_instance: Reference to the bot engine
         """
         self.bot = bot_instance
         logger.info("DCA Strategy ready")
+
+    def _get_ohlcv_data(self, market_data: Dict[str, Any]):
+        """
+        Get OHLCV data with caching.
+
+        Args:
+            market_data: Market data dictionary
+
+        Returns:
+            OHLCV DataFrame or None
+        """
+        current_time = time.time()
+
+        # Check if cache is still valid
+        if self.ohlcv_cache is not None and (current_time - self.ohlcv_cache_time) < self.ohlcv_cache_ttl:
+            logger.debug(f"Using cached OHLCV data (age: {current_time - self.ohlcv_cache_time:.0f}s)")
+            return self.ohlcv_cache
+
+        # Get fresh data
+        df = market_data.get('ohlcv')
+
+        if df is not None:
+            # Update cache
+            self.ohlcv_cache = df
+            self.ohlcv_cache_time = current_time
+            logger.debug("OHLCV data cached")
+
+        return df
     
     def analyze(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -149,17 +195,39 @@ class DCAStrategy(StrategyPlugin):
             Signal dictionary
         """
         current_price = market_data.get('last')
-        df = market_data.get('ohlcv')  # Pandas DataFrame with OHLCV data
         current_time = time.time()
 
-        if not current_price or df is None or len(df) < 50:
+        if not current_price:
+            return {
+                'action': 'hold',
+                'confidence': 0.0,
+                'reason': 'No price data'
+            }
+
+        logger.info(f"Current price: ${current_price:,.2f}")
+
+        # Smart indicator checking: Skip if price hasn't moved enough
+        if self.smart_checks and self.last_purchase_price:
+            price_change_percent = abs((current_price - self.last_purchase_price) / self.last_purchase_price) * 100
+
+            if price_change_percent < self.min_price_change_percent:
+                logger.debug(f"Price change {price_change_percent:.2f}% < {self.min_price_change_percent}%, skipping indicator checks")
+                return {
+                    'action': 'hold',
+                    'confidence': 0.5,
+                    'reason': f'Price change too small ({price_change_percent:.2f}%)',
+                    'metadata': {'current_price': current_price}
+                }
+
+        # Get OHLCV data (with caching)
+        df = self._get_ohlcv_data(market_data)
+
+        if df is None or len(df) < 50:
             return {
                 'action': 'hold',
                 'confidence': 0.0,
                 'reason': 'Insufficient market data'
             }
-
-        logger.info(f"Current price: ${current_price:,.2f}")
 
         # Check minimum interval to avoid overtrading
         if self.last_purchase_time:
@@ -328,52 +396,79 @@ class DCAStrategy(StrategyPlugin):
         Args:
             order: Order details
         """
-        if order.get('side') != 'buy':
-            return
+        if order.get('side') == 'buy':
+            # Update state
+            self.last_purchase_time = time.time()
+            self.last_purchase_price = order.get('price', 0)
+            self.purchase_count += 1
+            self.total_purchased += order.get('filled', 0)
+            self.total_spent += order.get('cost', 0)
 
-        # Update state
-        self.last_purchase_time = time.time()
-        self.last_purchase_price = order.get('price', 0)
-        self.purchase_count += 1
-        self.total_purchased += order.get('filled', 0)
-        self.total_spent += order.get('cost', 0)
+            avg_price = self.total_spent / self.total_purchased if self.total_purchased > 0 else 0
 
-        avg_price = self.total_spent / self.total_purchased if self.total_purchased > 0 else 0
+            # Calculate sell price with fees and profit target
+            sell_price = TechnicalIndicators.calculate_sell_price_with_fees(
+                buy_price=self.last_purchase_price,
+                buy_fee_percent=self.maker_fee,
+                sell_fee_percent=self.taker_fee,
+                profit_target_percent=self.profit_target
+            )
 
-        # Calculate sell price with fees and profit target
-        sell_price = TechnicalIndicators.calculate_sell_price_with_fees(
-            buy_price=self.last_purchase_price,
-            buy_fee_percent=self.maker_fee,
-            sell_fee_percent=self.taker_fee,
-            profit_target_percent=self.profit_target
-        )
+            # Calculate what the actual profit will be at that sell price
+            actual_profit = TechnicalIndicators.calculate_actual_profit_percent(
+                buy_price=self.last_purchase_price,
+                sell_price=sell_price,
+                buy_fee_percent=self.maker_fee,
+                sell_fee_percent=self.taker_fee
+            )
 
-        # Calculate what the actual profit will be at that sell price
-        actual_profit = TechnicalIndicators.calculate_actual_profit_percent(
-            buy_price=self.last_purchase_price,
-            sell_price=sell_price,
-            buy_fee_percent=self.maker_fee,
-            sell_fee_percent=self.taker_fee
-        )
+            # Track pending sell order info
+            self.pending_sell_order = {
+                'buy_order_id': order.get('id'),
+                'buy_price': self.last_purchase_price,
+                'buy_amount': order.get('filled', 0),
+                'buy_cost': order.get('cost', 0),
+                'buy_timestamp': self.last_purchase_time,
+                'target_sell_price': sell_price,
+                'profit_target': self.profit_target,
+                'actual_profit': actual_profit,
+                'status': 'pending'  # pending, filled, cancelled
+            }
 
-        logger.info("=" * 60)
-        logger.info("DCA Purchase Complete")
-        logger.info("=" * 60)
-        logger.info(f"  Purchase #{self.purchase_count}")
-        logger.info(f"  Buy Price: ${order.get('price'):,.2f}")
-        logger.info(f"  Amount: {order.get('filled'):.8f}")
-        logger.info(f"  Cost: ${order.get('cost'):,.2f}")
-        logger.info(f"  Buy Fee: {self.maker_fee}%")
-        logger.info("")
-        logger.info(f"  Target Sell Price: ${sell_price:,.2f}")
-        logger.info(f"  Profit Target: {self.profit_target}% (after fees)")
-        logger.info(f"  Actual Profit: {actual_profit:.2f}%")
-        logger.info(f"  Sell Fee: {self.taker_fee}%")
-        logger.info("")
-        logger.info(f"  Total purchased: {self.total_purchased:.8f}")
-        logger.info(f"  Total spent: ${self.total_spent:,.2f}")
-        logger.info(f"  Average price: ${avg_price:,.2f}")
-        logger.info("=" * 60)
+            logger.info("=" * 60)
+            logger.info("DCA Purchase Complete")
+            logger.info("=" * 60)
+            logger.info(f"  Purchase #{self.purchase_count}")
+            logger.info(f"  Buy Price: ${order.get('price'):,.2f}")
+            logger.info(f"  Amount: {order.get('filled'):.8f}")
+            logger.info(f"  Cost: ${order.get('cost'):,.2f}")
+            logger.info(f"  Buy Fee: {self.maker_fee}%")
+            logger.info("")
+            logger.info(f"  Target Sell Price: ${sell_price:,.2f}")
+            logger.info(f"  Profit Target: {self.profit_target}% (after fees)")
+            logger.info(f"  Actual Profit: {actual_profit:.2f}%")
+            logger.info(f"  Sell Fee: {self.taker_fee}%")
+            logger.info("")
+            logger.info(f"  Total purchased: {self.total_purchased:.8f}")
+            logger.info(f"  Total spent: ${self.total_spent:,.2f}")
+            logger.info(f"  Average price: ${avg_price:,.2f}")
+            logger.info("=" * 60)
+
+        elif order.get('side') == 'sell':
+            # Clear pending sell order when sell completes
+            if self.pending_sell_order:
+                self.pending_sell_order['status'] = 'filled'
+                self.pending_sell_order['sell_order_id'] = order.get('id')
+                self.pending_sell_order['sell_price'] = order.get('price', 0)
+                self.pending_sell_order['sell_timestamp'] = time.time()
+
+                logger.info("=" * 60)
+                logger.info("DCA Sell Complete")
+                logger.info("=" * 60)
+                logger.info(f"  Sell Price: ${order.get('price'):,.2f}")
+                logger.info(f"  Amount: {order.get('filled'):.8f}")
+                logger.info(f"  Revenue: ${order.get('cost'):,.2f}")
+                logger.info("=" * 60)
     
     def get_state(self) -> Dict[str, Any]:
         """
@@ -387,7 +482,9 @@ class DCAStrategy(StrategyPlugin):
             'last_purchase_price': self.last_purchase_price,
             'total_purchased': self.total_purchased,
             'total_spent': self.total_spent,
-            'purchase_count': self.purchase_count
+            'purchase_count': self.purchase_count,
+            'pending_sell_order': self.pending_sell_order,
+            'trailing_state': self.trailing_state
         }
 
     def restore_state(self, state: Dict[str, Any]):
@@ -402,9 +499,20 @@ class DCAStrategy(StrategyPlugin):
         self.total_purchased = state.get('total_purchased', 0.0)
         self.total_spent = state.get('total_spent', 0.0)
         self.purchase_count = state.get('purchase_count', 0)
+        self.pending_sell_order = state.get('pending_sell_order')
+
+        # Restore trailing state
+        if 'trailing_state' in state:
+            self.trailing_state = state['trailing_state']
+            if self.trailing_state.get('status') != 'inactive':
+                logger.info(f"Trailing state restored: {self.trailing_state['status']} "
+                           f"{self.trailing_state['direction']} from ${self.trailing_state.get('activation_price', 0):,.2f}")
 
         logger.info(f"State restored: {self.purchase_count} purchases, "
                    f"{self.total_purchased:.8f} total")
+
+        if self.pending_sell_order:
+            logger.info(f"Pending sell order restored: target ${self.pending_sell_order.get('target_sell_price'):,.2f}")
 
     def get_sell_price(self) -> float:
         """
@@ -422,4 +530,104 @@ class DCAStrategy(StrategyPlugin):
             sell_fee_percent=self.taker_fee,
             profit_target_percent=self.profit_target
         )
+
+    def start_trailing(self, direction: str, activation_price: float, trailing_percent: float):
+        """
+        Start trailing for buy or sell.
+
+        Args:
+            direction: 'up' for sell trailing, 'down' for buy trailing
+            activation_price: Price at which to start trailing
+            trailing_percent: Trailing percentage (e.g., 0.25 for 0.25%)
+        """
+        self.trailing_state = {
+            'status': 'waiting',
+            'direction': direction,
+            'activation_price': activation_price,
+            'watermark': None,
+            'trailing_percent': trailing_percent,
+            'last_update': time.time()
+        }
+
+        logger.info(f"Trailing started: {direction} from ${activation_price:,.2f} with {trailing_percent}% trail")
+
+    def update_trailing(self, current_price: float) -> bool:
+        """
+        Update trailing state with current price.
+
+        Args:
+            current_price: Current market price
+
+        Returns:
+            True if trailing order should trigger, False otherwise
+        """
+        if self.trailing_state['status'] == 'inactive':
+            return False
+
+        direction = self.trailing_state['direction']
+        activation_price = self.trailing_state['activation_price']
+        trailing_percent = self.trailing_state['trailing_percent']
+
+        # Check if we've reached activation price
+        if self.trailing_state['status'] == 'waiting':
+            if direction == 'up' and current_price >= activation_price:
+                # Start trailing up (for sells)
+                self.trailing_state['status'] = 'active'
+                self.trailing_state['watermark'] = current_price
+                self.trailing_state['last_update'] = time.time()
+                logger.info(f"Trailing activated at ${current_price:,.2f} (target was ${activation_price:,.2f})")
+            elif direction == 'down' and current_price <= activation_price:
+                # Start trailing down (for buys)
+                self.trailing_state['status'] = 'active'
+                self.trailing_state['watermark'] = current_price
+                self.trailing_state['last_update'] = time.time()
+                logger.info(f"Trailing activated at ${current_price:,.2f} (target was ${activation_price:,.2f})")
+            return False
+
+        # Update watermark if price moved in our favor
+        if self.trailing_state['status'] == 'active':
+            watermark = self.trailing_state['watermark']
+
+            if direction == 'up':
+                # Trailing up for sell - track highest price
+                if current_price > watermark:
+                    self.trailing_state['watermark'] = current_price
+                    self.trailing_state['last_update'] = time.time()
+                    logger.debug(f"Trailing watermark updated: ${current_price:,.2f}")
+
+                # Check if price dropped enough to trigger
+                drop_percent = ((watermark - current_price) / watermark) * 100
+                if drop_percent >= trailing_percent:
+                    logger.info(f"Trailing sell triggered! Price dropped {drop_percent:.2f}% from ${watermark:,.2f} to ${current_price:,.2f}")
+                    self.trailing_state['status'] = 'triggered'
+                    return True
+
+            elif direction == 'down':
+                # Trailing down for buy - track lowest price
+                if current_price < watermark:
+                    self.trailing_state['watermark'] = current_price
+                    self.trailing_state['last_update'] = time.time()
+                    logger.debug(f"Trailing watermark updated: ${current_price:,.2f}")
+
+                # Check if price rose enough to trigger
+                rise_percent = ((current_price - watermark) / watermark) * 100
+                if rise_percent >= trailing_percent:
+                    logger.info(f"Trailing buy triggered! Price rose {rise_percent:.2f}% from ${watermark:,.2f} to ${current_price:,.2f}")
+                    self.trailing_state['status'] = 'triggered'
+                    return True
+
+        return False
+
+    def reset_trailing(self):
+        """Reset trailing state (called after connectivity loss or order fill)."""
+        if self.trailing_state['status'] != 'inactive':
+            logger.info("Resetting trailing state")
+            self.trailing_state = {
+                'status': 'inactive',
+                'direction': None,
+                'activation_price': None,
+                'watermark': None,
+                'trailing_percent': None,
+                'last_update': None
+            }
 

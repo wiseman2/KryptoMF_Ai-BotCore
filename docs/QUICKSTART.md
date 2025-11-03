@@ -230,7 +230,7 @@ Or add credentials to your config file.
 - Read the [full documentation](docs/)
 - Check out [example strategies](examples/)
 - Join the [community](https://github.com/yourusername/KryptoMF_Ai-BotCore/discussions)
-- [Contribute](../CONTRIBUTING.md) to the project
+- [Contribute](CONTRIBUTING.md) to the project
 
 ## ⚠️ Disclaimer
 

@@ -222,7 +222,7 @@ By contributing, you agree that:
 - **Your Rights** - You retain copyright to your contributions
 - **Our Rights** - We can use contributions in both free and commercial versions
 
-For more details, see the [LICENSE](LICENSE) file.
+For more details, see the [LICENSE](../LICENSE) file.
 
 **Contact:** kryptomfai@gmail.com | https://kryptomfai.com
 

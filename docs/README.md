@@ -6,11 +6,21 @@ Welcome to the KryptoMF Bot Core documentation! This directory contains comprehe
 
 ### Getting Started
 - **[Main README](../README.md)** - Project overview, installation, and quick start guide
+- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
 - **[Security Guide](SECURITY.md)** - Security best practices, credential management, and secure deployment
 
 ### Trading Features
+- **[Strategy Enhancements](STRATEGY_ENHANCEMENTS.md)** - Detailed guide to advanced DCA, enhanced strategies, and trailing orders
 - **[Fees and Profit Calculation](FEES_AND_PROFIT_CALCULATION.md)** - Understanding trading fees, profit calculations, and order types
+- **[State Persistence & Reliability](STATE_PERSISTENCE_AND_RELIABILITY.md)** - State saving, connectivity monitoring, trailing management
 - **[Backtesting Guide](BACKTESTING.md)** - How to backtest strategies with historical data
+
+### Development & Reference
+- **[CHANGELOG](CHANGELOG.md)** - Version history and migration guides
+- **[Build Guide](BUILD.md)** - How to build standalone executables
+- **[Contributing](CONTRIBUTING.md)** - How to contribute to the project
+- **[Testing Guide](TESTING.md)** - How to run tests and write new ones
+- **[Project Summary](PROJECT_SUMMARY.md)** - Comprehensive project overview
 
 ### Configuration
 - **[Example Configurations](../config/)** - Sample configuration files for different strategies
@@ -27,18 +37,23 @@ Welcome to the KryptoMF Bot Core documentation! This directory contains comprehe
 
 ### For New Users
 1. Start with the [Main README](../README.md) to install and set up the bot
-2. Read [Security Guide](SECURITY.md) to understand credential management
-3. Review [Fees and Profit Calculation](FEES_AND_PROFIT_CALCULATION.md) to configure trading parameters
-4. Try [Backtesting](BACKTESTING.md) before live trading
+2. Follow the [Quick Start Guide](QUICKSTART.md) to get running in 5 minutes
+3. Read [Security Guide](SECURITY.md) to understand credential management
+4. Review [Fees and Profit Calculation](FEES_AND_PROFIT_CALCULATION.md) to configure trading parameters
+5. Try [Backtesting](BACKTESTING.md) before live trading
 
 ### For Traders
+- **Strategy Configuration**: [Strategy Enhancements](STRATEGY_ENHANCEMENTS.md)
 - **Understanding Fees**: [Fees and Profit Calculation](FEES_AND_PROFIT_CALCULATION.md)
+- **Reliability Features**: [State Persistence & Reliability](STATE_PERSISTENCE_AND_RELIABILITY.md)
 - **Testing Strategies**: [Backtesting Guide](BACKTESTING.md)
 - **Security Best Practices**: [Security Guide](SECURITY.md)
 
 ### For Developers
 - **Project Structure**: See [Main README](../README.md#project-structure)
-- **Contributing**: See [Main README](../README.md#contributing)
+- **Contributing**: [Contributing Guide](CONTRIBUTING.md)
+- **Building**: [Build Guide](BUILD.md)
+- **Testing**: [Testing Guide](TESTING.md)
 - **Security**: [Security Guide](SECURITY.md)
 
 ---
@@ -81,6 +96,31 @@ How to test strategies with historical data:
 - Analyzing results
 - Interpreting performance metrics
 - Data caching and management
+
+### [Strategy Enhancements](STRATEGY_ENHANCEMENTS.md)
+Detailed guide to advanced trading strategies:
+- Advanced DCA with profit application
+- Enhanced DCA with indicator-based decisions
+- Grid trading with indicator validation
+- Trailing order support
+- Technical indicators configuration
+
+### [State Persistence & Reliability](STATE_PERSISTENCE_AND_RELIABILITY.md)
+Enterprise-grade reliability features:
+- State persistence and recovery
+- Connectivity monitoring
+- Trailing state management
+- Smart indicator checks
+- Configuration reference
+- Troubleshooting guide
+
+### [CHANGELOG](CHANGELOG.md)
+Version history and migration guides:
+- All changes by version
+- New features and improvements
+- Breaking changes
+- Migration instructions
+- Configuration updates
 
 ---
 
@@ -152,7 +192,7 @@ This documentation is part of the KryptoMF Bot Core project and is licensed unde
 - ✅ Free for research
 - ❌ Commercial use requires separate license
 
-See [LICENSE](../LICENSE.md) for full details.
+See [LICENSE](../LICENSE) for full details.
 
 ---
 

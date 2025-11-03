@@ -83,6 +83,16 @@ class AdvancedDCAStrategy(StrategyPlugin):
         self.total_profit = 0.0
         self.total_dca_applied = 0.0
         self.bot = None
+
+        # Trailing state (for bot-managed trailing orders)
+        self.trailing_state = {
+            'status': 'inactive',  # inactive, waiting, active, triggered
+            'direction': None,  # 'up' for sell trailing, 'down' for buy trailing
+            'activation_price': None,  # Price to start trailing
+            'watermark': None,  # Highest (sell) or lowest (buy) price seen while trailing
+            'trailing_percent': None,  # Trailing percentage
+            'last_update': None  # Last time watermark was updated
+        }
         
         logger.info(f"Advanced DCA Strategy initialized:")
         logger.info(f"  Amount per purchase: ${self.amount_usd}")
@@ -262,15 +272,23 @@ class AdvancedDCAStrategy(StrategyPlugin):
         sell_price = ((cost + fee) / amount) * (1 + self.min_profit_percent + 0.002)  # Add 0.2% buffer
         
         purchase = {
+            'buy_order_id': order.get('id'),
             'cost': cost,
             'amount': amount,
             'price': price,
             'fee': fee,
             'sell_price': sell_price,
             'dca_applied': 0.0,
-            'timestamp': time.time()
+            'timestamp': time.time(),
+            'sell_order': {
+                'status': 'pending',  # pending, filled, cancelled
+                'target_price': sell_price,
+                'order_id': None,
+                'filled_price': None,
+                'filled_timestamp': None
+            }
         }
-        
+
         self.purchases.append(purchase)
         
         logger.info("=" * 60)
@@ -288,25 +306,32 @@ class AdvancedDCAStrategy(StrategyPlugin):
         """Handle a filled sell order and apply profit to previous purchase."""
         sale_amount = order.get('cost', 0)  # Total revenue from sale
         fee = order.get('fee', {}).get('cost', 0)
-        
+
         # Find and remove the sold purchase (assume FIFO - first in, first out)
         if not self.purchases:
             logger.warning("Sell order filled but no purchases in list!")
             return
-        
+
         sold_purchase = self.purchases.pop()  # Remove last purchase (most recent)
-        
+
+        # Update sell order status
+        if 'sell_order' in sold_purchase:
+            sold_purchase['sell_order']['status'] = 'filled'
+            sold_purchase['sell_order']['order_id'] = order.get('id')
+            sold_purchase['sell_order']['filled_price'] = order.get('price', 0)
+            sold_purchase['sell_order']['filled_timestamp'] = time.time()
+
         # Calculate profit
         purchase_cost = sold_purchase['cost']
         profit_minimum = self.min_profit_percent * purchase_cost
         total_profit = sale_amount - fee - purchase_cost
         leftover_profit = total_profit - profit_minimum
-        
+
         # Calculate DCA to add to previous purchase
         dca_to_add = 0.0
         if leftover_profit > 0:
             dca_to_add = leftover_profit * self.dca_pool_percent
-        
+
         logger.info("=" * 60)
         logger.info("Advanced DCA Sale Complete")
         logger.info("=" * 60)
@@ -315,9 +340,9 @@ class AdvancedDCAStrategy(StrategyPlugin):
         logger.info(f"  Total profit: ${total_profit:,.2f}")
         logger.info(f"  DCA to apply: ${dca_to_add:,.2f}")
         logger.info("=" * 60)
-        
+
         self.total_profit += total_profit
-        
+
         # Apply DCA to previous purchase if exists
         if dca_to_add > 0 and len(self.purchases) > 0:
             self._apply_dca_to_previous(dca_to_add)
@@ -363,28 +388,110 @@ class AdvancedDCAStrategy(StrategyPlugin):
     def get_state(self) -> Dict[str, Any]:
         """
         Get current strategy state.
-        
+
         Returns:
             State dictionary
         """
         return {
             'purchases': self.purchases,
             'total_profit': self.total_profit,
-            'total_dca_applied': self.total_dca_applied
+            'total_dca_applied': self.total_dca_applied,
+            'trailing_state': self.trailing_state
         }
-    
+
     def restore_state(self, state: Dict[str, Any]):
         """
         Restore strategy state.
-        
+
         Args:
             state: Saved state dictionary
         """
         self.purchases = state.get('purchases', [])
         self.total_profit = state.get('total_profit', 0.0)
         self.total_dca_applied = state.get('total_dca_applied', 0.0)
-        
+
+        # Restore trailing state
+        if 'trailing_state' in state:
+            self.trailing_state = state['trailing_state']
+            if self.trailing_state.get('status') != 'inactive':
+                logger.info(f"Trailing state restored: {self.trailing_state['status']} "
+                           f"{self.trailing_state['direction']} from ${self.trailing_state.get('activation_price', 0):,.2f}")
+
         logger.info(f"State restored: {len(self.purchases)} active purchases, "
                    f"${self.total_profit:,.2f} total profit, "
                    f"${self.total_dca_applied:,.2f} total DCA applied")
+
+    def start_trailing(self, direction: str, activation_price: float, trailing_percent: float):
+        """Start trailing for buy or sell (same as DCA strategy)."""
+        self.trailing_state = {
+            'status': 'waiting',
+            'direction': direction,
+            'activation_price': activation_price,
+            'watermark': None,
+            'trailing_percent': trailing_percent,
+            'last_update': time.time()
+        }
+        logger.info(f"Trailing started: {direction} from ${activation_price:,.2f} with {trailing_percent}% trail")
+
+    def update_trailing(self, current_price: float) -> bool:
+        """Update trailing state (same logic as DCA strategy)."""
+        if self.trailing_state['status'] == 'inactive':
+            return False
+
+        direction = self.trailing_state['direction']
+        activation_price = self.trailing_state['activation_price']
+        trailing_percent = self.trailing_state['trailing_percent']
+
+        if self.trailing_state['status'] == 'waiting':
+            if direction == 'up' and current_price >= activation_price:
+                self.trailing_state['status'] = 'active'
+                self.trailing_state['watermark'] = current_price
+                self.trailing_state['last_update'] = time.time()
+                logger.info(f"Trailing activated at ${current_price:,.2f}")
+            elif direction == 'down' and current_price <= activation_price:
+                self.trailing_state['status'] = 'active'
+                self.trailing_state['watermark'] = current_price
+                self.trailing_state['last_update'] = time.time()
+                logger.info(f"Trailing activated at ${current_price:,.2f}")
+            return False
+
+        if self.trailing_state['status'] == 'active':
+            watermark = self.trailing_state['watermark']
+
+            if direction == 'up':
+                if current_price > watermark:
+                    self.trailing_state['watermark'] = current_price
+                    self.trailing_state['last_update'] = time.time()
+
+                drop_percent = ((watermark - current_price) / watermark) * 100
+                if drop_percent >= trailing_percent:
+                    logger.info(f"Trailing sell triggered! Price dropped {drop_percent:.2f}%")
+                    self.trailing_state['status'] = 'triggered'
+                    return True
+
+            elif direction == 'down':
+                if current_price < watermark:
+                    self.trailing_state['watermark'] = current_price
+                    self.trailing_state['last_update'] = time.time()
+
+                rise_percent = ((current_price - watermark) / watermark) * 100
+                if rise_percent >= trailing_percent:
+                    logger.info(f"Trailing buy triggered! Price rose {rise_percent:.2f}%")
+                    self.trailing_state['status'] = 'triggered'
+                    return True
+
+        return False
+
+    def reset_trailing(self):
+        """Reset trailing state."""
+        if self.trailing_state['status'] != 'inactive':
+            logger.info("Resetting trailing state")
+            self.trailing_state = {
+                'status': 'inactive',
+                'direction': None,
+                'activation_price': None,
+                'watermark': None,
+                'trailing_percent': None,
+                'last_update': None
+            }
 

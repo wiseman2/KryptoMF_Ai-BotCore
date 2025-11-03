@@ -192,7 +192,7 @@ KryptoMF_Ai-BotCore/
 
 ### Developer Documentation
 - **[BUILD.md](BUILD.md)** - How to build standalone executables
-- **[CONTRIBUTING.md](../CONTRIBUTING.md)** - How to contribute
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - How to contribute
 - **[TESTING.md](TESTING.md)** - How to run and write tests
 
 ## 🚀 Quick Start

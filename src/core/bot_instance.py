@@ -13,6 +13,8 @@ Multiple BotInstances can run simultaneously in the GUI.
 import time
 import uuid
 import threading
+import json
+from pathlib import Path
 from typing import Dict, Any, Optional, Callable
 from datetime import datetime
 from utils.logger import get_logger
@@ -77,13 +79,28 @@ class BotInstance:
         self.on_status_update = None
         self.on_trade_executed = None
         self.on_error = None
-        
+
+        # State persistence
+        state_dir = Path(config.get('state_dir', 'data'))
+        state_dir.mkdir(parents=True, exist_ok=True)
+        self.state_file = state_dir / f"bot_state_{self.bot_id}.json"
+        self.auto_save = config.get('auto_save', True)
+        self.save_interval = config.get('save_interval', 60)  # Seconds
+        self.last_save_time = 0
+
+        # Connectivity tracking
+        self.connectivity_failures = 0
+        self.max_connectivity_failures = config.get('max_connectivity_failures', 2)
+        self.last_connectivity_check = 0
+        self.connectivity_check_interval = config.get('connectivity_check_interval', 120)
+
         logger.info(f"[{self.name}] Bot instance created")
         logger.info(f"  ID: {self.bot_id}")
         logger.info(f"  Exchange: {self.exchange_id}")
         logger.info(f"  Symbol: {self.symbol}")
         logger.info(f"  Strategy: {self.strategy_name}")
         logger.info(f"  Paper trading: {self.paper_trading}")
+        logger.info(f"  State file: {self.state_file}")
     
     def initialize(self):
         """
@@ -91,22 +108,154 @@ class BotInstance:
         Call this before starting the bot.
         """
         logger.info(f"[{self.name}] Initializing components...")
-        
+
         try:
             # Initialize exchange
             self.exchange = self._init_exchange()
-            
+
             # Initialize strategy
             self.strategy = self._init_strategy()
-            
+
+            # Restore state if exists
+            self._load_state()
+
             logger.info(f"[{self.name}] ✓ Initialization complete")
             return True
-            
+
         except Exception as e:
             logger.error(f"[{self.name}] Failed to initialize: {e}")
             if self.on_error:
                 self.on_error(self.bot_id, str(e))
             return False
+
+    def _save_state(self):
+        """Save bot state to disk."""
+        try:
+            if not self.strategy:
+                return
+
+            state = {
+                'bot_id': self.bot_id,
+                'name': self.name,
+                'symbol': self.symbol,
+                'exchange': self.exchange_id,
+                'strategy': self.strategy_name,
+                'last_update': datetime.now().isoformat(),
+                'stats': self.stats.copy(),
+                'strategy_state': self.strategy.get_state(),
+                'connectivity': {
+                    'last_success': datetime.now().isoformat() if self.connectivity_failures == 0 else None,
+                    'failure_count': self.connectivity_failures
+                }
+            }
+
+            # Write to temp file first, then rename (atomic operation)
+            temp_file = self.state_file.with_suffix('.tmp')
+            with open(temp_file, 'w') as f:
+                json.dump(state, f, indent=2)
+
+            temp_file.replace(self.state_file)
+            self.last_save_time = time.time()
+
+            logger.debug(f"[{self.name}] State saved to {self.state_file}")
+
+        except Exception as e:
+            logger.error(f"[{self.name}] Failed to save state: {e}")
+
+    def _load_state(self):
+        """Load bot state from disk."""
+        try:
+            if not self.state_file.exists():
+                logger.info(f"[{self.name}] No saved state found")
+                return
+
+            with open(self.state_file, 'r') as f:
+                state = json.load(f)
+
+            # Restore strategy state
+            if self.strategy and 'strategy_state' in state:
+                self.strategy.restore_state(state['strategy_state'])
+                logger.info(f"[{self.name}] Strategy state restored")
+
+            # Restore stats
+            if 'stats' in state:
+                self.stats.update(state['stats'])
+                logger.info(f"[{self.name}] Stats restored")
+
+            # Restore connectivity info
+            if 'connectivity' in state:
+                self.connectivity_failures = state['connectivity'].get('failure_count', 0)
+
+            logger.info(f"[{self.name}] ✓ State loaded from {self.state_file}")
+
+        except Exception as e:
+            logger.error(f"[{self.name}] Failed to load state: {e}")
+
+    def _auto_save_if_needed(self):
+        """Auto-save state if interval has passed."""
+        if not self.auto_save:
+            return
+
+        current_time = time.time()
+        if current_time - self.last_save_time >= self.save_interval:
+            self._save_state()
+
+    def _check_connectivity(self) -> bool:
+        """
+        Check internet connectivity to exchange.
+
+        Returns:
+            True if connected, False otherwise
+        """
+        try:
+            if not self.exchange:
+                return False
+
+            # Check if we can reach the exchange
+            is_connected = self.exchange.check_connectivity()
+
+            if is_connected:
+                # Reset failure counter on success
+                if self.connectivity_failures > 0:
+                    logger.info(f"[{self.name}] ✓ Connectivity check passed after {self.connectivity_failures} failures")
+                    self.connectivity_failures = 0
+                return True
+            else:
+                # Increment failure counter
+                self.connectivity_failures += 1
+                logger.warning(f"[{self.name}] ⚠️  Connectivity check failed (failure #{self.connectivity_failures})")
+
+                # Reset trailing state after max failures
+                if self.connectivity_failures >= self.max_connectivity_failures:
+                    self._reset_trailing_state()
+
+                # Wait before retrying
+                backoff_time = min(30 * self.connectivity_failures, 300)  # Max 5 minutes
+                logger.info(f"[{self.name}] Waiting {backoff_time}s before retry...")
+                time.sleep(backoff_time)
+
+                return False
+
+        except Exception as e:
+            self.connectivity_failures += 1
+            logger.error(f"[{self.name}] Connectivity check error: {e}")
+
+            # Reset trailing state after max failures
+            if self.connectivity_failures >= self.max_connectivity_failures:
+                self._reset_trailing_state()
+
+            return False
+
+    def _reset_trailing_state(self):
+        """Reset trailing state after connectivity loss."""
+        logger.warning(f"[{self.name}] Resetting trailing state due to {self.connectivity_failures} connectivity failures")
+
+        # Call strategy's reset_trailing method if available
+        if self.strategy and hasattr(self.strategy, 'reset_trailing'):
+            self.strategy.reset_trailing()
+
+        # Save state after reset
+        self._save_state()
     
     def _init_exchange(self) -> CCXTExchange:
         """Initialize exchange connector."""
@@ -189,24 +338,23 @@ class BotInstance:
         Stop the bot gracefully.
         """
         logger.info(f"[{self.name}] Stopping bot...")
-        
+
         self.running = False
-        
+
         # Wait for thread to finish
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=5)
-        
-        # Save state
-        if self.strategy:
-            state = self.strategy.get_state()
-            logger.info(f"[{self.name}] Strategy state: {state}")
-        
+
+        # Save final state to disk
+        self._save_state()
+        logger.info(f"[{self.name}] Final state saved")
+
         # Disconnect
         if self.exchange:
             self.exchange.disconnect()
-        
+
         logger.info(f"[{self.name}] ✓ Bot stopped")
-        
+
         if self.on_status_update:
             self.on_status_update(self.bot_id, 'stopped')
     
@@ -243,21 +391,34 @@ class BotInstance:
                 if self.paused:
                     time.sleep(1)
                     continue
-                
+
                 iteration += 1
-                
+
                 logger.info(f"[{self.name}] Iteration #{iteration}")
-                
+
+                # Check connectivity periodically
+                current_time = time.time()
+                if current_time - self.last_connectivity_check >= self.connectivity_check_interval:
+                    if not self._check_connectivity():
+                        # Connectivity failed, skip this iteration
+                        continue
+                    self.last_connectivity_check = current_time
+
                 # Get market data
                 market_data = self.exchange.get_market_data(self.symbol)
-                
+
                 # Update stats
                 self.stats['last_price'] = market_data.get('last', 0)
                 self.stats['last_update'] = datetime.now()
-                
+
+                # Reset connectivity failures on successful data fetch
+                if self.connectivity_failures > 0:
+                    logger.info(f"[{self.name}] ✓ Connectivity restored")
+                    self.connectivity_failures = 0
+
                 # Run strategy
                 signal = self.strategy.analyze(market_data)
-                
+
                 # Execute signal
                 if signal['action'] == 'buy':
                     self._execute_buy(signal)
@@ -265,17 +426,26 @@ class BotInstance:
                     self._execute_sell(signal)
                 else:
                     logger.info(f"[{self.name}] {signal['reason']}")
-                
+
+                # Auto-save state if needed
+                self._auto_save_if_needed()
+
                 # Sleep
                 time.sleep(check_interval)
-                
+
             except Exception as e:
                 logger.error(f"[{self.name}] Error in trading loop: {e}", exc_info=True)
-                
+
+                # Increment connectivity failures
+                self.connectivity_failures += 1
+
                 if self.on_error:
                     self.on_error(self.bot_id, str(e))
-                
-                time.sleep(10)
+
+                # Exponential backoff
+                backoff_time = min(10 * (2 ** min(self.connectivity_failures - 1, 4)), 300)  # Max 5 minutes
+                logger.warning(f"[{self.name}] Waiting {backoff_time}s before retry (failure #{self.connectivity_failures})")
+                time.sleep(backoff_time)
         
         logger.info(f"[{self.name}] Trading loop stopped")
     
@@ -301,15 +471,19 @@ class BotInstance:
             
             # Update stats
             self.stats['total_trades'] += 1
-            
+
             # Notify strategy
             if order.get('status') == 'closed':
                 self.strategy.on_order_filled(order)
-            
+
+                # Save state immediately after purchase
+                self._save_state()
+                logger.info(f"[{self.name}] State saved after purchase")
+
             # Notify GUI
             if self.on_trade_executed:
                 self.on_trade_executed(self.bot_id, order)
-            
+
         except Exception as e:
             logger.error(f"[{self.name}] Buy order failed: {e}")
     
@@ -335,15 +509,19 @@ class BotInstance:
             
             # Update stats
             self.stats['total_trades'] += 1
-            
+
             # Notify strategy
             if order.get('status') == 'closed':
                 self.strategy.on_order_filled(order)
-            
+
+                # Save state immediately after sell
+                self._save_state()
+                logger.info(f"[{self.name}] State saved after sell")
+
             # Notify GUI
             if self.on_trade_executed:
                 self.on_trade_executed(self.bot_id, order)
-            
+
         except Exception as e:
             logger.error(f"[{self.name}] Sell order failed: {e}")
     

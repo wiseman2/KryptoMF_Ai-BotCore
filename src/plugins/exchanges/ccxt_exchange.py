@@ -112,15 +112,37 @@ class CCXTExchange(ExchangePlugin):
         Disconnect from exchange.
         """
         logger.info(f"Disconnecting from {self.exchange_id}")
-        
+
         if self.exchange:
             # Close any open connections
             if hasattr(self.exchange, 'close'):
                 self.exchange.close()
-        
+
         self.exchange = None
         logger.info("✓ Disconnected")
-    
+
+    def check_connectivity(self) -> bool:
+        """
+        Check if exchange is reachable.
+
+        Returns:
+            True if connected, False otherwise
+        """
+        try:
+            # Quick ping to exchange - fetch status or time
+            if hasattr(self.exchange, 'fetch_status'):
+                self.exchange.fetch_status()
+            else:
+                # Fallback: fetch server time (lightweight call)
+                self.exchange.fetch_time()
+
+            logger.debug(f"Connectivity check passed for {self.exchange_id}")
+            return True
+
+        except Exception as e:
+            logger.warning(f"Connectivity check failed for {self.exchange_id}: {e}")
+            return False
+
     def get_balance(self) -> Dict[str, float]:
         """
         Get account balance.

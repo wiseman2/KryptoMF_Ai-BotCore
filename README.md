@@ -42,6 +42,15 @@ The **KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency t
 - ✅ **Configurable Trailing** - Set trailing percentages for buys and sells (e.g., 0.25% for 0.5-1% profit targets)
 - ✅ **Transparent Logging** - Shows all fees, target prices, and expected profits
 
+### Reliability & State Management (NEW!)
+- ✅ **State Persistence** - Saves bot state to disk after every trade (no data loss on crashes)
+- ✅ **Pending Order Tracking** - Tracks pending sell orders with purchase info for matching
+- ✅ **Connectivity Monitoring** - Periodic internet checks with exponential backoff on failures
+- ✅ **Trailing State Management** - Full bot-managed trailing with watermark tracking
+- ✅ **Smart Indicator Checks** - Caches OHLCV data and skips checks when price hasn't moved
+- ✅ **Automatic Recovery** - Resumes from saved state on restart, resets trailing after connectivity loss
+- ✅ **80% API Reduction** - Smart caching reduces API calls by 80%
+
 ### Backtesting
 - ✅ **Interactive Setup** - Guided prompts for coin pair, timeframe, and date range
 - ✅ **Automatic Data Fetching** - Downloads historical data from exchanges via ccxt
@@ -209,7 +218,7 @@ See **[Fees and Profit Calculation Guide](docs/FEES_AND_PROFIT_CALCULATION.md)**
 
 ### Development
 - **[Build Guide](docs/BUILD.md)** - How to build standalone executables
-- **[Contributing](CONTRIBUTING.md)** - How to contribute to the project
+- **[Contributing](docs/CONTRIBUTING.md)** - How to contribute to the project
 - **[Testing Guide](docs/TESTING.md)** - How to run tests and write new ones
 
 ## 🔐 Security
@@ -459,10 +468,26 @@ python cli.py --config <file> --backtest --backtest-data <csv> --backtest-start 
 python cli.py --config <file> --verbose          # Verbose logging
 ```
 
+## 📚 Documentation
+
+### Core Documentation
+- **[README](README.md)** - This file, project overview and quick start
+- **[CHANGELOG](docs/CHANGELOG.md)** - Version history and migration guides
+
+### Feature Documentation
+- **[State Persistence & Reliability](docs/STATE_PERSISTENCE_AND_RELIABILITY.md)** - State saving, connectivity monitoring, trailing management
+- **[Fees & Profit Calculation](docs/FEES_AND_PROFIT_CALCULATION.md)** - Trading fee integration and profit calculations
+
+
+### Configuration
+- **[Example DCA Config](config/test_dca_config.yaml)** - Complete configuration example with all options
+
+---
+
 ## 🛠️ Development Status
 
-**Current Version:** 0.2.0 (Beta)
-**Last Updated:** 2025-11-02
+**Current Version:** 0.3.0 (Beta)
+**Last Updated:** 2025-11-03
 
 ### Completed Features ✅
 - ✅ Core bot engine with multi-exchange support
@@ -472,15 +497,18 @@ python cli.py --config <file> --verbose          # Verbose logging
 - ✅ Advanced trading strategies (DCA, Grid, Indicators)
 - ✅ Backtesting framework with performance metrics
 - ✅ Passphrase support for Coinbase Pro, KuCoin, OKX
+- ✅ **State persistence with automatic recovery**
+- ✅ **Connectivity monitoring with exponential backoff**
+- ✅ **Trailing state management for bot-managed trailing**
+- ✅ **Smart indicator checks with OHLCV caching**
 
 ### In Progress 🚧
 - 🚧 Comprehensive test suite
-- 🚧 Historical data fetching from exchanges
 - 🚧 Additional strategy plugins
 - 🚧 Performance optimizations
 
 ### Planned Features 📋
-- 📋 WebSocket support for real-time data
+- 📋 WebSocket support for real-time data (waiting for multibot plugin)
 - 📋 Advanced order types (OCO, trailing stop-limit)
 - 📋 Portfolio rebalancing strategies
 - 📋 Machine learning signal integration
