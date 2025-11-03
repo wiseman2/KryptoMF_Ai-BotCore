@@ -315,9 +315,9 @@ Before going live with real funds:
 
 ## 🔗 Related Documentation
 
-- [Quick Start Guide](../QUICKSTART.md)
+- [Quick Start Guide](QUICKSTART.md)
 - [Configuration Guide](../config/strategy_config_example.yaml)
-- [Strategy Enhancements](../STRATEGY_ENHANCEMENTS.md)
+- [Strategy Enhancements](STRATEGY_ENHANCEMENTS.md)
 - [Contributing](../CONTRIBUTING.md)
 
 ---

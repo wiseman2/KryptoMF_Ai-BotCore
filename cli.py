@@ -10,9 +10,12 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / 'src'))
+# Add src to path so we can import from it
+src_path = Path(__file__).parent / 'src'
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
 
+# Now import from src modules (without src. prefix since we added src to path)
 from core.bot_instance import BotInstance
 from core.config_manager import ConfigManager
 from cli.status_display import StatusDisplay

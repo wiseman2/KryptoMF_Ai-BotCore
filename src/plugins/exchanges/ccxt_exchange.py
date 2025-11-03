@@ -16,28 +16,39 @@ logger = get_logger(__name__)
 class CCXTExchange(ExchangePlugin):
     """
     Universal exchange connector using ccxt.
-    
+
     Supports:
     - Binance.US
     - Coinbase
     - Kraken
     - And 100+ other exchanges
     """
-    
+
+    # Map user-friendly exchange names to ccxt IDs
+    EXCHANGE_ID_MAP = {
+        'binance_us': 'binanceus',
+        'coinbase': 'coinbasepro',
+        'coinbase_pro': 'coinbasepro',
+        'binance': 'binance',
+        'kraken': 'kraken',
+        'kucoin': 'kucoin',
+        'okx': 'okx',
+    }
+
     def __init__(self, config: Dict[str, Any], secret_provider):
         """
         Initialize CCXT exchange connector.
-        
+
         Args:
             config: Exchange configuration
             secret_provider: Secure key storage
         """
         super().__init__(config, secret_provider)
-        
+
         self.exchange_id = config.get('exchange', 'binance_us')
         self.paper_trading = config.get('paper_trading', False)
         self.exchange = None
-        
+
         logger.info(f"Initializing {self.exchange_id} connector")
     
     def connect(self):
@@ -45,12 +56,18 @@ class CCXTExchange(ExchangePlugin):
         Connect to exchange using ccxt.
         """
         logger.info(f"Connecting to {self.exchange_id}...")
-        
+
+        # Map user-friendly exchange ID to ccxt ID
+        ccxt_exchange_id = self.EXCHANGE_ID_MAP.get(self.exchange_id, self.exchange_id)
+
         # Get exchange class from ccxt
-        exchange_class = getattr(ccxt, self.exchange_id, None)
-        
+        exchange_class = getattr(ccxt, ccxt_exchange_id, None)
+
         if not exchange_class:
-            raise ValueError(f"Exchange {self.exchange_id} not supported by ccxt")
+            raise ValueError(
+                f"Exchange {self.exchange_id} (ccxt: {ccxt_exchange_id}) not supported by ccxt. "
+                f"Available exchanges: {', '.join(ccxt.exchanges)}"
+            )
         
         # Get API credentials from secure storage
         credentials = self.secret_provider.get_key(self.exchange_id)

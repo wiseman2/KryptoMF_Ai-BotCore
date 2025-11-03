@@ -32,7 +32,15 @@ The **KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency t
 - ✅ **Enhanced DCA** - Indicator-based buying instead of time-based intervals
 - ✅ **Trailing Orders** - Exchange-native trailing orders (Binance/Binance.US)
 - ✅ **Technical Indicators** - RSI, MACD, EMA, Stochastic RSI, MFI, and more
+- ✅ **RSI Rising Check** - Wait for momentum reversal before buying (optional)
 - ✅ **Configurable Everything** - Select indicators, adjust thresholds, customize strategies
+
+### Trading Fees & Profit Management
+- ✅ **Fee-Aware Calculations** - Accounts for maker and taker fees in all profit calculations
+- ✅ **Accurate Profit Targets** - Calculates exact sell price needed for target profit after fees
+- ✅ **Multiple Order Types** - Market, limit, stop, trailing market, trailing limit, trailing stop
+- ✅ **Configurable Trailing** - Set trailing percentages for buys and sells (e.g., 0.25% for 0.5-1% profit targets)
+- ✅ **Transparent Logging** - Shows all fees, target prices, and expected profits
 
 ### Backtesting
 - ✅ **Interactive Setup** - Guided prompts for coin pair, timeframe, and date range
@@ -133,18 +141,76 @@ The status display shows:
 - Trade statistics (win rate, total trades)
 - Uptime
 
+## 💰 Trading Fees & Profit Calculation
+
+The bot includes comprehensive fee management to ensure accurate profit calculations:
+
+### Fee-Aware Profit Calculation
+
+The bot automatically accounts for both buy and sell fees when calculating target sell prices:
+
+```
+Example: Buy BTC at $50,000 with 0.1% fees, 1% profit target
+1. Buy cost with fee: $50,000 × 1.001 = $50,050
+2. Add profit target: $50,050 × 1.01 = $50,550.50
+3. Account for sell fee: $50,550.50 / 0.999 = $50,601.05
+Result: Sell at $50,601.05 for exactly 1% profit after all fees
+```
+
+### Order Types
+
+Choose from multiple order types for buying and selling:
+
+- **Market Orders** - Execute immediately at current price (higher taker fees)
+- **Limit Orders** - Set your price, wait for fill (lower maker fees)
+- **Trailing Market/Limit** - Follow price movement with percentage offset
+- **Trailing Stop** - Protect profits by trailing price upward
+
+### Trailing Configuration
+
+For small profit targets (0.5-1%), use tight trailing percentages:
+
+```yaml
+profit_target: 1.0  # 1% profit after fees
+buy_order_type: limit
+sell_order_type: trailing_market
+trailing_sell_percent: 0.25  # Sell when price drops 0.25% from peak
+```
+
+### RSI Rising Check
+
+Optionally wait for RSI momentum reversal before buying:
+
+```yaml
+indicators:
+  rsi:
+    enabled: true
+    period: 14
+    oversold: 30
+    check_rising: true  # Wait for RSI to reverse before buying
+```
+
+This helps avoid "catching a falling knife" by ensuring the downtrend is reversing before entering a position.
+
+See **[Fees and Profit Calculation Guide](docs/FEES_AND_PROFIT_CALCULATION.md)** for detailed explanations and examples.
+
 ## 📖 Documentation
 
 ### Getting Started
-- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 5 minutes
-- **[Strategy Enhancements](STRATEGY_ENHANCEMENTS.md)** - Detailed guide to advanced DCA, enhanced strategies, and trailing orders
+- **[Documentation Index](docs/README.md)** - Complete documentation index with all guides
+- **[Quick Start Guide](docs/QUICKSTART.md)** - Get up and running in 5 minutes
+- **[Strategy Enhancements](docs/STRATEGY_ENHANCEMENTS.md)** - Detailed guide to advanced DCA, enhanced strategies, and trailing orders
 - **[Configuration Example](config/strategy_config_example.yaml)** - Comprehensive configuration template with all options
+
+### Trading & Configuration
+- **[Fees and Profit Calculation](docs/FEES_AND_PROFIT_CALCULATION.md)** - Understanding trading fees, profit calculations, RSI rising check, and order types
+- **[Backtesting Guide](docs/BACKTESTING.md)** - How to backtest strategies with historical data
 - **[Security Documentation](docs/SECURITY.md)** - Complete guide to credential storage, order signing, and security best practices
 
 ### Development
-- **[Build Guide](BUILD.md)** - How to build standalone executables
+- **[Build Guide](docs/BUILD.md)** - How to build standalone executables
 - **[Contributing](CONTRIBUTING.md)** - How to contribute to the project
-- **[Testing Guide](TESTING.md)** - How to run tests and write new ones
+- **[Testing Guide](docs/TESTING.md)** - How to run tests and write new ones
 
 ## 🔐 Security
 
@@ -276,7 +342,7 @@ Downloaded data is automatically cached in `data/historical/` to avoid re-downlo
 ### Key Features Documentation
 
 #### Advanced DCA Strategy
-The advanced DCA strategy applies profit from subsequent sales to reduce the cost basis of previous purchases, making them easier to sell at profit. See [STRATEGY_ENHANCEMENTS.md](STRATEGY_ENHANCEMENTS.md#1-advanced-dca-strategy-advanced_dcapy) for details.
+The advanced DCA strategy applies profit from subsequent sales to reduce the cost basis of previous purchases, making them easier to sell at profit. See [STRATEGY_ENHANCEMENTS.md](docs/STRATEGY_ENHANCEMENTS.md#1-advanced-dca-strategy-advanced_dcapy) for details.
 
 **Example:**
 ```
@@ -289,13 +355,13 @@ Buy #1 new cost: $49,240 (reduced from $50,000)
 ```
 
 #### Enhanced DCA with Indicators
-Instead of time-based buying, the enhanced DCA uses technical indicators (RSI, MACD, EMA, etc.) to identify optimal entry points. See [STRATEGY_ENHANCEMENTS.md](STRATEGY_ENHANCEMENTS.md#2-enhanced-dca-strategy-dcapy) for configuration.
+Instead of time-based buying, the enhanced DCA uses technical indicators (RSI, MACD, EMA, etc.) to identify optimal entry points. See [STRATEGY_ENHANCEMENTS.md](docs/STRATEGY_ENHANCEMENTS.md#2-enhanced-dca-strategy-dcapy) for configuration.
 
 #### Grid Trading with Indicator Validation
-Grid orders are validated with technical indicators before placement to prevent blind buying in unfavorable market conditions. See [STRATEGY_ENHANCEMENTS.md](STRATEGY_ENHANCEMENTS.md#3-grid-trading-strategy-grid_tradingpy) for details.
+Grid orders are validated with technical indicators before placement to prevent blind buying in unfavorable market conditions. See [STRATEGY_ENHANCEMENTS.md](docs/STRATEGY_ENHANCEMENTS.md#3-grid-trading-strategy-grid_tradingpy) for details.
 
 #### Exchange-Native Trailing Orders
-For exchanges that support it (Binance/Binance.US), trailing orders are placed directly on the exchange to protect against power outages, internet issues, and computer crashes. See [STRATEGY_ENHANCEMENTS.md](STRATEGY_ENHANCEMENTS.md#4-trailing-order-support) for implementation details.
+For exchanges that support it (Binance/Binance.US), trailing orders are placed directly on the exchange to protect against power outages, internet issues, and computer crashes. See [STRATEGY_ENHANCEMENTS.md](docs/STRATEGY_ENHANCEMENTS.md#4-trailing-order-support) for implementation details.
 
 **⚠️ Important:** Always place trailing sell orders immediately after buy orders to protect your position even if the bot crashes.
 
@@ -304,8 +370,10 @@ For exchanges that support it (Binance/Binance.US), trailing orders are placed d
 This is part of the **KryptoMF_Ai Ecosystem**:
 
 - **[KryptoMF_Ai-BotCore](https://github.com/yourusername/KryptoMF_Ai-BotCore)** (This Repository) - Open-source CLI trading bot engine
-- **[KryptoMF_Ai-BotDashboard](https://github.com/yourusername/KryptoMF_Ai-BotDashboard)** - Premium GUI for multi-bot management
+- **[KryptoMF_Ai-BotDashboard](https://github.com/yourusername/KryptoMF_Ai-BotDashboard)** - Complete KryptoMF_AI Trading Bot with web-based dashboard, real-time monitoring, advanced charting, multi-bot management, and enhanced features
 - **[KryptoMF_Ai Web Platform](https://kryptomultiflexai.com)** - AI signal subscription service
+
+**Note**: KryptoMF_Ai-BotCore is a fully functional standalone trading bot. The BotDashboard provides additional web interface and advanced monitoring capabilities but is not required for trading operations.
 
 ## 📝 Licensing
 

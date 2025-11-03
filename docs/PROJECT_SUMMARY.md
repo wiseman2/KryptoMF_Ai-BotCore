@@ -2,7 +2,7 @@
 
 ## 📋 Overview
 
-**KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency trading bot engine that runs from the command line. It's the core component of the KryptoMF_Ai ecosystem, providing all the essential trading functionality without requiring a GUI.
+**KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency trading bot engine that runs from the command line. It's the core component of the KryptoMF_Ai ecosystem, providing all the essential trading functionality.
 
 ## 🎯 Project Goals
 
@@ -19,9 +19,9 @@
 This is the **open-source core** of a dual-licensing model:
 
 - **Open Source Core (Free)** - This repository - Fully functional CLI bot
-- **Premium GUI (Paid)** - Separate repository - Multi-bot management with visual interface
+- **Premium Trading Bot Application (Paid)** - Separate repository - Multi-bot management with visual interface
 
-The open-source core is intentionally feature-complete to provide real value to the community while the premium GUI adds convenience features for non-technical users.
+The open-source core is intentionally feature-complete to provide real value to the community while the premium Trading Bot Application adds convenience features for non-technical users.
 
 ## ✨ Key Features
 
@@ -185,14 +185,14 @@ KryptoMF_Ai-BotCore/
 ## 📚 Documentation
 
 ### User Documentation
-- **[README.md](README.md)** - Main documentation and feature overview
+- **[README.md](../README.md)** - Main documentation and feature overview
 - **[QUICKSTART.md](QUICKSTART.md)** - Get started in 5 minutes
 - **[STRATEGY_ENHANCEMENTS.md](STRATEGY_ENHANCEMENTS.md)** - Detailed strategy documentation
-- **[config/strategy_config_example.yaml](config/strategy_config_example.yaml)** - Configuration template
+- **[config/strategy_config_example.yaml](../config/strategy_config_example.yaml)** - Configuration template
 
 ### Developer Documentation
 - **[BUILD.md](BUILD.md)** - How to build standalone executables
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - How to contribute
+- **[CONTRIBUTING.md](../CONTRIBUTING.md)** - How to contribute
 - **[TESTING.md](TESTING.md)** - How to run and write tests
 
 ## 🚀 Quick Start
@@ -272,11 +272,11 @@ This is part of the **KryptoMF_Ai Ecosystem**:
 
 1. **KryptoMF_Ai-BotCore** (This Repository)
    - Open-source CLI trading bot engine
-   - Fully functional without GUI
+   - Fully functional
    - MIT License
 
 2. **KryptoMF_Ai-BotDashboard**
-   - Premium GUI for multi-bot management
+   - Premium Trading Bot Application for multi-bot management
    - Visual configuration wizards
    - Real-time charts and dashboards
    - Proprietary License

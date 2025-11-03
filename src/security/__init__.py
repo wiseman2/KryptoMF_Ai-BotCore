@@ -10,5 +10,10 @@ This code MUST remain open source so users can audit how their
 exchange API keys are stored and used.
 """
 
-__all__ = ['SecretProvider', 'OrderSigner']
+from .secret_provider import get_secret_provider
+from .order_signing import OrderSigner
 
+__all__ = [
+    'get_secret_provider',
+    'OrderSigner',
+]

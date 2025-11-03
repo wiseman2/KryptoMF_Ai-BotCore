@@ -8,10 +8,8 @@ Base classes for all plugins:
 - Signal plugins
 """
 
-__all__ = [
-    'ExchangePlugin',
-    'StrategyPlugin',
-    'IndicatorPlugin',
-    'SignalPlugin'
-]
+from .indicators import TechnicalIndicators
 
+__all__ = [
+    'TechnicalIndicators',
+]
