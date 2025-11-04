@@ -66,27 +66,28 @@ class HistoricalDataFetcher:
             logger.error(f"Failed to initialize exchange {exchange_id}: {e}")
             raise
     
-    def estimate_data_size(self, timeframe: str, days: int) -> Tuple[int, float]:
+    @staticmethod
+    def estimate_data_size(timeframe: str, days: int) -> Tuple[int, float]:
         """
         Estimate the number of candles and data size.
-        
+
         Args:
             timeframe: Timeframe (e.g., '1h', '1d')
             days: Number of days
-            
+
         Returns:
             Tuple of (num_candles, size_mb)
         """
-        if timeframe not in self.TIMEFRAMES:
+        if timeframe not in HistoricalDataFetcher.TIMEFRAMES:
             raise ValueError(f"Unsupported timeframe: {timeframe}")
-        
-        seconds_per_candle = self.TIMEFRAMES[timeframe]['seconds']
+
+        seconds_per_candle = HistoricalDataFetcher.TIMEFRAMES[timeframe]['seconds']
         total_seconds = days * 86400
         num_candles = total_seconds // seconds_per_candle
-        
-        size_bytes = num_candles * self.BYTES_PER_CANDLE
+
+        size_bytes = num_candles * HistoricalDataFetcher.BYTES_PER_CANDLE
         size_mb = size_bytes / (1024 * 1024)
-        
+
         return num_candles, size_mb
     
     def get_cache_filename(self, symbol: str, timeframe: str, start_date: str, end_date: str) -> Path:

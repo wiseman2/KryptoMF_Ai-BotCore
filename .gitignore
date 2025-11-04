@@ -1,6 +1,8 @@
 # KryptoMF_Ai-BotCore
 # Personal Configuration file
 bot_config.yaml
+# errors i'm working through
+error.txt
 
 # Python
 __pycache__/
@@ -103,3 +105,6 @@ test_data/
 TODO.md
 NOTES.md
 .scratch/
+/error.txt
+/data/historical/
+/data/

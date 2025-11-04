@@ -367,15 +367,17 @@ class ConfigManager:
         print("-" * 70)
         print("Available strategies:")
         print(f"  {Fore.CYAN}1.{Style.RESET_ALL} Grid Trading - Place buy/sell orders at regular intervals")
-        print(f"  {Fore.CYAN}2.{Style.RESET_ALL} DCA (Dollar Cost Averaging) - Buy at regular intervals or based on indicators")
-        print(f"  {Fore.CYAN}3.{Style.RESET_ALL} Momentum - Trade based on price momentum (coming soon)")
+        print(f"  {Fore.CYAN}2.{Style.RESET_ALL} DCA (Dollar Cost Averaging) - Buy based on indicators")
+        print(f"  {Fore.CYAN}3.{Style.RESET_ALL} Advanced DCA - DCA with profit reinvestment to reduce cost basis")
+        print(f"  {Fore.CYAN}4.{Style.RESET_ALL} Momentum - Trade based on price momentum (coming soon)")
         print()
-        strategy_choice = input(f"{Fore.YELLOW}Select strategy (1-3):{Style.RESET_ALL} ").strip()
+        strategy_choice = input(f"{Fore.YELLOW}Select strategy (1-4):{Style.RESET_ALL} ").strip()
 
         strategy_map = {
             '1': 'grid_trading',
             '2': 'dca',
-            '3': 'momentum'
+            '3': 'advanced_dca',
+            '4': 'momentum'
         }
         config['strategy'] = strategy_map.get(strategy_choice, 'grid_trading')
 
@@ -398,31 +400,47 @@ class ConfigManager:
 
         elif config['strategy'] == 'dca':
             print("DCA Configuration:")
-            print(f"  {Fore.YELLOW}Choose DCA mode:{Style.RESET_ALL}")
-            print(f"    {Fore.CYAN}1.{Style.RESET_ALL} Time-based (buy at regular intervals)")
-            print(f"    {Fore.CYAN}2.{Style.RESET_ALL} Indicator-based (buy when indicators signal)")
-            dca_mode = input(f"  Select mode (1-2) [{Fore.CYAN}1{Style.RESET_ALL}]: ").strip() or "1"
-
             amount_usd = float(input(f"  Amount per purchase (USD) [{Fore.CYAN}100{Style.RESET_ALL}]: ").strip() or "100")
 
-            if dca_mode == "2":
-                # Indicator-based DCA
-                print()
-                print(f"  {Fore.YELLOW}Configure Technical Indicators:{Style.RESET_ALL}")
-                indicators = self._configure_indicators()
+            # Indicator-based DCA (always use indicators)
+            print()
+            print(f"  {Fore.YELLOW}Configure Technical Indicators:{Style.RESET_ALL}")
+            indicators = self._configure_indicators()
 
-                config['strategy_params'] = {
-                    'use_indicators': True,
-                    'amount_usd': amount_usd,
-                    'indicators': indicators
-                }
-            else:
-                # Time-based DCA
-                interval_hours = int(input(f"  DCA interval (hours) [{Fore.CYAN}24{Style.RESET_ALL}]: ").strip() or "24")
-                config['strategy_params'] = {
-                    'interval_hours': interval_hours,
-                    'amount_usd': amount_usd
-                }
+            config['strategy_params'] = {
+                'amount_usd': amount_usd,
+                'min_interval_hours': 0,  # No time restriction by default
+                'indicators': indicators
+            }
+
+            # Add price_drop if it was configured
+            if 'price_drop' in indicators:
+                config['strategy_params']['price_drop'] = indicators.pop('price_drop')
+
+        elif config['strategy'] == 'advanced_dca':
+            print("Advanced DCA Configuration:")
+            print(f"  {Fore.YELLOW}This strategy applies profits to reduce cost basis of previous purchases{Style.RESET_ALL}")
+            print()
+
+            amount_usd = float(input(f"  Amount per purchase (USD) [{Fore.CYAN}100{Style.RESET_ALL}]: ").strip() or "100")
+            max_purchases = input(f"  Max concurrent purchases (-1 for unlimited) [{Fore.CYAN}-1{Style.RESET_ALL}]: ").strip()
+
+            # Indicator-based
+            print()
+            print(f"  {Fore.YELLOW}Configure Technical Indicators:{Style.RESET_ALL}")
+            indicators = self._configure_indicators()
+
+            config['strategy_params'] = {
+                'amount_usd': amount_usd,
+                'max_purchases': int(max_purchases or "-1"),
+                'min_interval_hours': 0,  # No time restriction by default
+                'indicators': indicators
+            }
+
+            # Add price_drop if it was configured
+            if 'price_drop' in indicators:
+                config['strategy_params']['price_drop'] = indicators.pop('price_drop')
+
         else:
             config['strategy_params'] = {}
 
@@ -691,36 +709,55 @@ class ConfigManager:
             }
 
         else:
-            # Multiple indicators (recommended)
+            # Multiple indicators (recommended) - Use FlexGrid proven defaults
             print()
-            print(f"  {Fore.YELLOW}Using recommended multi-indicator setup:{Style.RESET_ALL}")
-            print("    • RSI (14 period, 30/70 thresholds)")
-            print("    • Stochastic RSI (14 period, 20/80 thresholds)")
-            print("    • EMA crossover (12/26 periods)")
+            print(f"  {Fore.YELLOW}Using recommended multi-indicator setup (FlexGrid proven defaults):{Style.RESET_ALL}")
+            print("    • RSI (14 period, 35/55 thresholds, rising check)")
+            print("    • Stochastic RSI (14 period, 33/80 thresholds)")
+            print("    • EMA (25 period)")
+            print("    • MACD (12/26/9, rising check)")
+            print("    • MFI (14 period, 25 oversold)")
+            print("    • Rising Price (3 candle lookback)")
             print()
 
             use_defaults = input(f"  Use default settings? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower()
 
             if use_defaults != 'n':
-                # Use defaults
+                # Use FlexGrid proven defaults
                 indicators = {
                     'rsi': {
                         'enabled': True,
                         'period': 14,
-                        'oversold': 30,
-                        'overbought': 70,
+                        'oversold': 35,
+                        'overbought': 55,
                         'check_rising': True
                     },
                     'stoch_rsi': {
                         'enabled': True,
                         'period': 14,
-                        'oversold': 20,
+                        'smoothing': 3,
+                        'oversold': 33,
                         'overbought': 80
                     },
                     'ema': {
                         'enabled': True,
-                        'short_period': 12,
-                        'long_period': 26
+                        'length': 25
+                    },
+                    'macd': {
+                        'enabled': True,
+                        'fast': 12,
+                        'slow': 26,
+                        'signal': 9,
+                        'check_rising': True
+                    },
+                    'mfi': {
+                        'enabled': True,
+                        'period': 14,
+                        'oversold': 25
+                    },
+                    'rising_price': {
+                        'enabled': True,
+                        'lookback_candles': 3
                     }
                 }
             else:
@@ -730,41 +767,103 @@ class ConfigManager:
                 # RSI
                 print()
                 print(f"  {Fore.YELLOW}RSI Configuration:{Style.RESET_ALL}")
-                rsi_period = input(f"    Period [{Fore.CYAN}14{Style.RESET_ALL}]: ").strip()
-                rsi_oversold = input(f"    Oversold [{Fore.CYAN}30{Style.RESET_ALL}]: ").strip()
-                rsi_overbought = input(f"    Overbought [{Fore.CYAN}70{Style.RESET_ALL}]: ").strip()
-                rsi_rising = input(f"    Check if RSI is rising? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower() or "y"
-                indicators['rsi'] = {
-                    'enabled': True,
-                    'period': int(rsi_period or "14"),
-                    'oversold': float(rsi_oversold or "30"),
-                    'overbought': float(rsi_overbought or "70"),
-                    'check_rising': rsi_rising == 'y'
-                }
+                rsi_enabled = input(f"    Enable RSI? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower() or "y"
+                if rsi_enabled == 'y':
+                    rsi_period = input(f"    Period [{Fore.CYAN}14{Style.RESET_ALL}]: ").strip()
+                    rsi_oversold = input(f"    Oversold [{Fore.CYAN}35{Style.RESET_ALL}]: ").strip()
+                    rsi_overbought = input(f"    Overbought [{Fore.CYAN}55{Style.RESET_ALL}]: ").strip()
+                    rsi_rising = input(f"    Check if RSI is rising? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower() or "y"
+                    indicators['rsi'] = {
+                        'enabled': True,
+                        'period': int(rsi_period or "14"),
+                        'oversold': float(rsi_oversold or "35"),
+                        'overbought': float(rsi_overbought or "55"),
+                        'check_rising': rsi_rising == 'y'
+                    }
 
                 # Stochastic RSI
                 print()
                 print(f"  {Fore.YELLOW}Stochastic RSI Configuration:{Style.RESET_ALL}")
-                stoch_period = input(f"    Period [{Fore.CYAN}14{Style.RESET_ALL}]: ").strip()
-                stoch_oversold = input(f"    Oversold [{Fore.CYAN}20{Style.RESET_ALL}]: ").strip()
-                stoch_overbought = input(f"    Overbought [{Fore.CYAN}80{Style.RESET_ALL}]: ").strip()
-                indicators['stoch_rsi'] = {
-                    'enabled': True,
-                    'period': int(stoch_period or "14"),
-                    'oversold': float(stoch_oversold or "20"),
-                    'overbought': float(stoch_overbought or "80")
-                }
+                stoch_enabled = input(f"    Enable Stoch RSI? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower() or "y"
+                if stoch_enabled == 'y':
+                    stoch_period = input(f"    Period [{Fore.CYAN}14{Style.RESET_ALL}]: ").strip()
+                    stoch_smoothing = input(f"    Smoothing [{Fore.CYAN}3{Style.RESET_ALL}]: ").strip()
+                    stoch_oversold = input(f"    Oversold [{Fore.CYAN}33{Style.RESET_ALL}]: ").strip()
+                    stoch_overbought = input(f"    Overbought [{Fore.CYAN}80{Style.RESET_ALL}]: ").strip()
+                    indicators['stoch_rsi'] = {
+                        'enabled': True,
+                        'period': int(stoch_period or "14"),
+                        'smoothing': int(stoch_smoothing or "3"),
+                        'oversold': float(stoch_oversold or "33"),
+                        'overbought': float(stoch_overbought or "80")
+                    }
 
                 # EMA
                 print()
                 print(f"  {Fore.YELLOW}EMA Configuration:{Style.RESET_ALL}")
-                ema_short = input(f"    Short period [{Fore.CYAN}12{Style.RESET_ALL}]: ").strip()
-                ema_long = input(f"    Long period [{Fore.CYAN}26{Style.RESET_ALL}]: ").strip()
-                indicators['ema'] = {
-                    'enabled': True,
-                    'short_period': int(ema_short or "12"),
-                    'long_period': int(ema_long or "26")
-                }
+                ema_enabled = input(f"    Enable EMA? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower() or "y"
+                if ema_enabled == 'y':
+                    ema_length = input(f"    EMA length [{Fore.CYAN}25{Style.RESET_ALL}]: ").strip()
+                    indicators['ema'] = {
+                        'enabled': True,
+                        'length': int(ema_length or "25")
+                    }
+
+                # MACD
+                print()
+                print(f"  {Fore.YELLOW}MACD Configuration:{Style.RESET_ALL}")
+                macd_enabled = input(f"    Enable MACD? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower() or "y"
+                if macd_enabled == 'y':
+                    macd_fast = input(f"    Fast period [{Fore.CYAN}12{Style.RESET_ALL}]: ").strip()
+                    macd_slow = input(f"    Slow period [{Fore.CYAN}26{Style.RESET_ALL}]: ").strip()
+                    macd_signal = input(f"    Signal period [{Fore.CYAN}9{Style.RESET_ALL}]: ").strip()
+                    macd_rising = input(f"    Check if MACD is rising? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower() or "y"
+                    indicators['macd'] = {
+                        'enabled': True,
+                        'fast': int(macd_fast or "12"),
+                        'slow': int(macd_slow or "26"),
+                        'signal': int(macd_signal or "9"),
+                        'check_rising': macd_rising == 'y'
+                    }
+
+                # MFI
+                print()
+                print(f"  {Fore.YELLOW}MFI Configuration:{Style.RESET_ALL}")
+                mfi_enabled = input(f"    Enable MFI? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower() or "y"
+                if mfi_enabled == 'y':
+                    mfi_period = input(f"    Period [{Fore.CYAN}14{Style.RESET_ALL}]: ").strip()
+                    mfi_oversold = input(f"    Oversold [{Fore.CYAN}25{Style.RESET_ALL}]: ").strip()
+                    indicators['mfi'] = {
+                        'enabled': True,
+                        'period': int(mfi_period or "14"),
+                        'oversold': float(mfi_oversold or "25")
+                    }
+
+                # Rising Price
+                print()
+                print(f"  {Fore.YELLOW}Rising Price Configuration:{Style.RESET_ALL}")
+                rising_price_enabled = input(f"    Enable rising price check? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower() or "y"
+                if rising_price_enabled == 'y':
+                    rising_price_lookback = input(f"    Lookback candles [{Fore.CYAN}3{Style.RESET_ALL}]: ").strip()
+                    indicators['rising_price'] = {
+                        'enabled': True,
+                        'lookback_candles': int(rising_price_lookback or "3")
+                    }
+
+        # Price drop configuration
+        print()
+        print(f"  {Fore.YELLOW}Price Drop Configuration (OPTIONAL):{Style.RESET_ALL}")
+        print("    This requires price to drop by a certain % before buying")
+        price_drop_enabled = input(f"    Enable price drop requirement? (y/n) [{Fore.CYAN}n{Style.RESET_ALL}]: ").strip().lower() or "n"
+
+        if price_drop_enabled == 'y':
+            price_drop_percent = input(f"    Drop percentage required [{Fore.CYAN}0.5{Style.RESET_ALL}]: ").strip()
+            price_drop_lookback = input(f"    Lookback candles [{Fore.CYAN}3{Style.RESET_ALL}]: ").strip()
+            indicators['price_drop'] = {
+                'enabled': True,
+                'percent': float(price_drop_percent or "0.5"),
+                'lookback_candles': int(price_drop_lookback or "3")
+            }
 
         return indicators
 

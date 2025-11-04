@@ -56,8 +56,19 @@ class DCAStrategy(StrategyPlugin):
         self.amount_usd = self.params.get('amount_usd', 100)
         self.max_price = self.params.get('max_price', None)
         self.min_price = self.params.get('min_price', None)
-        self.min_interval_hours = self.params.get('min_interval_hours', 1)
-        self.price_drop_percent = self.params.get('price_drop_percent', 1.0)
+        self.min_interval_hours = self.params.get('min_interval_hours', 0)  # Default 0 = no time restriction
+
+        # Price drop configuration
+        price_drop_config = self.params.get('price_drop', {})
+        if isinstance(price_drop_config, dict):
+            self.use_price_drop = price_drop_config.get('enabled', False)
+            self.price_drop_percent = price_drop_config.get('percent', 0.5)
+            self.price_drop_lookback = price_drop_config.get('lookback_candles', 3)
+        else:
+            # Legacy support: if price_drop_percent is set directly
+            self.price_drop_percent = self.params.get('price_drop_percent', None)
+            self.use_price_drop = self.price_drop_percent is not None
+            self.price_drop_lookback = 24  # Default lookback
 
         # Trading fees (from config)
         fees = config.get('fees', {})
@@ -88,7 +99,9 @@ class DCAStrategy(StrategyPlugin):
         # EMA configuration
         ema_config = indicators_config.get('ema', {})
         self.use_ema = ema_config.get('enabled', True)
-        self.ema_short = ema_config.get('short_period', 12)
+        # Support both 'length' (preferred) and 'short_period' (legacy) for backward compatibility
+        self.ema_length = ema_config.get('length', ema_config.get('short_period', 25))
+        self.ema_short = self.ema_length  # Alias for backward compatibility
         self.ema_long = ema_config.get('long_period', 26)
 
         # MACD configuration
@@ -97,6 +110,7 @@ class DCAStrategy(StrategyPlugin):
         self.macd_fast = macd_config.get('fast_period', 12)
         self.macd_slow = macd_config.get('slow_period', 26)
         self.macd_signal = macd_config.get('signal_period', 9)
+        self.check_macd_rising = macd_config.get('check_rising', True)  # Check if MACD is rising
 
         # MFI configuration
         mfi_config = indicators_config.get('mfi', {})
@@ -104,6 +118,11 @@ class DCAStrategy(StrategyPlugin):
         self.mfi_period = mfi_config.get('period', 14)
         self.mfi_oversold = mfi_config.get('oversold', 20)
         self.mfi_overbought = mfi_config.get('overbought', 80)
+
+        # Rising price configuration
+        rising_price_config = indicators_config.get('rising_price', {})
+        self.use_rising_price = rising_price_config.get('enabled', True)
+        self.rising_price_lookback = rising_price_config.get('lookback_candles', 3)
 
         # State
         self.last_purchase_time = None
@@ -229,8 +248,8 @@ class DCAStrategy(StrategyPlugin):
                 'reason': 'Insufficient market data'
             }
 
-        # Check minimum interval to avoid overtrading
-        if self.last_purchase_time:
+        # Check minimum interval to avoid overtrading (only if min_interval_hours > 0)
+        if self.min_interval_hours > 0 and self.last_purchase_time:
             time_since_last = (current_time - self.last_purchase_time) / 3600  # hours
             logger.info(f"Time since last purchase: {time_since_last:.1f} hours")
 
@@ -273,18 +292,14 @@ class DCAStrategy(StrategyPlugin):
         buy_signals = []
         reasons = []
 
-        # Check price drop (required)
-        if TechnicalIndicators.has_price_dropped(df, lookback=24, drop_percent=self.price_drop_percent):
-            buy_signals.append(True)
-            reasons.append(f"Price dropped {self.price_drop_percent}%")
-        else:
-            # If price hasn't dropped, don't buy
-            return {
-                'action': 'hold',
-                'confidence': 1.0,
-                'reason': f'Price has not dropped {self.price_drop_percent}%',
-                'metadata': {'current_price': current_price}
-            }
+        # Check price drop (OPTIONAL - only if enabled)
+        if self.use_price_drop:
+            if TechnicalIndicators.has_price_dropped(df, lookback=self.price_drop_lookback, drop_percent=self.price_drop_percent):
+                buy_signals.append(True)
+                reasons.append(f"Price dropped {self.price_drop_percent}% over {self.price_drop_lookback} candles ✓")
+            else:
+                buy_signals.append(False)
+                reasons.append(f"Price drop insufficient")
 
         # RSI oversold and rising check
         if self.use_rsi:
@@ -333,20 +348,39 @@ class DCAStrategy(StrategyPlugin):
 
         # MACD rising
         if self.use_macd:
-            if TechnicalIndicators.is_macd_rising(df, fast=self.macd_fast, slow=self.macd_slow, signal=self.macd_signal):
-                buy_signals.append(True)
-                reasons.append("MACD rising")
+            is_macd_rising = TechnicalIndicators.is_macd_rising(df, fast=self.macd_fast, slow=self.macd_slow, signal=self.macd_signal)
+
+            if self.check_macd_rising:
+                # Require MACD to be rising (momentum building)
+                if is_macd_rising:
+                    buy_signals.append(True)
+                    reasons.append("MACD rising ✓")
+                else:
+                    buy_signals.append(False)
+                    reasons.append("MACD not rising")
             else:
-                buy_signals.append(False)
+                # Just check if MACD exists (always true if enabled)
+                buy_signals.append(True)
+                reasons.append("MACD enabled")
 
         # MFI oversold
         if self.use_mfi:
             if TechnicalIndicators.is_mfi_oversold(df, period=self.mfi_period, oversold_level=self.mfi_oversold):
                 buy_signals.append(True)
                 mfi = TechnicalIndicators.get_mfi(df, period=self.mfi_period)
-                reasons.append(f"MFI oversold ({mfi:.1f})")
+                reasons.append(f"MFI oversold ({mfi:.1f}) ✓")
             else:
                 buy_signals.append(False)
+                reasons.append(f"MFI not oversold")
+
+        # Rising price check
+        if self.use_rising_price:
+            if TechnicalIndicators.is_price_rising(df, lookback=self.rising_price_lookback):
+                buy_signals.append(True)
+                reasons.append(f"Price rising over {self.rising_price_lookback} candles ✓")
+            else:
+                buy_signals.append(False)
+                reasons.append(f"Price not rising")
 
         # Determine if we should buy (at least 50% of indicators must agree)
         positive_signals = sum(buy_signals)
