@@ -43,7 +43,7 @@ This makes earlier purchases easier to sell at profit and allows for continuous 
 **Configuration:**
 - `min_profit_percent`: Minimum profit before applying DCA (default: 0.5%)
 - `dca_pool_percent`: Percentage of excess profit to apply (default: 100%)
-- `max_purchases`: Maximum number of active purchases (default: 5)
+- `max_purchases`: Maximum number of active purchases (default: -1 for unlimited)
 
 #### 2. Enhanced DCA with Indicators
 Instead of time-based buying, this strategy uses technical indicators to identify optimal entry points.
@@ -227,7 +227,7 @@ strategy_params:
   amount_usd: 100
   min_profit_percent: 0.5
   dca_pool_percent: 100
-  max_purchases: 5
+  max_purchases: -1  # -1 = unlimited (default), or set a specific limit
   indicators:
     rsi:
       enabled: true

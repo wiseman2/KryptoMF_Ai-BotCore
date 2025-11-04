@@ -38,7 +38,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
     - amount_usd: Amount to purchase each time (default: 100)
     - min_profit_percent: Minimum profit percentage before applying DCA (default: 0.5)
     - dca_pool_percent: Percentage of excess profit to apply to previous purchase (default: 100)
-    - max_purchases: Maximum number of active purchases (default: 5)
+    - max_purchases: Maximum number of active purchases (default: -1 for unlimited)
     - price_drop_percent: Minimum price drop to trigger buy (default: 1.0)
     - use_rsi: Use RSI indicator (default: True)
     - rsi_oversold: RSI oversold level (default: 35)
@@ -64,7 +64,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
         self.amount_usd = self.params.get('amount_usd', 100)
         self.min_profit_percent = self.params.get('min_profit_percent', 0.5) / 100  # Convert to decimal
         self.dca_pool_percent = self.params.get('dca_pool_percent', 100) / 100  # Convert to decimal
-        self.max_purchases = self.params.get('max_purchases', 5)
+        self.max_purchases = self.params.get('max_purchases', -1)  # -1 = unlimited (default)
         self.price_drop_percent = self.params.get('price_drop_percent', 1.0)
         
         # Indicator settings
@@ -98,7 +98,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
         logger.info(f"  Amount per purchase: ${self.amount_usd}")
         logger.info(f"  Min profit: {self.min_profit_percent * 100}%")
         logger.info(f"  DCA pool: {self.dca_pool_percent * 100}% of excess profit")
-        logger.info(f"  Max purchases: {self.max_purchases}")
+        logger.info(f"  Max purchases: {'Unlimited' if self.max_purchases == -1 else self.max_purchases}")
         logger.info(f"  Indicators: RSI={self.use_rsi}, StochRSI={self.use_stoch_rsi}, "
                    f"EMA={self.use_ema}, MACD={self.use_macd}, MFI={self.use_mfi}")
     
@@ -136,9 +136,9 @@ class AdvancedDCAStrategy(StrategyPlugin):
         
         logger.info(f"Current price: ${current_price:,.2f}")
         logger.info(f"Active purchases: {len(self.purchases)}")
-        
-        # Check if we've reached max purchases
-        if len(self.purchases) >= self.max_purchases:
+
+        # Check if we've reached max purchases (only if max_purchases is not -1)
+        if self.max_purchases != -1 and len(self.purchases) >= self.max_purchases:
             return {
                 'action': 'hold',
                 'confidence': 1.0,

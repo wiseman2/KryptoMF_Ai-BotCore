@@ -27,7 +27,7 @@ Implements the advanced DCA logic from the original multibot where profit from s
 - **Configurable Parameters**:
   - `min_profit_percent`: Minimum profit before applying DCA (default: 0.5%)
   - `dca_pool_percent`: Percentage of excess profit to apply (default: 100%)
-  - `max_purchases`: Maximum number of active purchases (default: 5)
+  - `max_purchases`: Maximum number of active purchases (default: -1 for unlimited)
 
 ### Example
 ```
@@ -291,8 +291,8 @@ exchange:
 
 ### Risk Management
 - Start with small position sizes ($10-$50)
-- Use `max_purchases` to limit exposure
-- Set `max_daily_trades` to prevent overtrading
+- Use `max_purchases` to limit exposure (default is -1 for unlimited, set a specific number if you want to be cautious)
+- Set `max_daily_trades` to prevent overtrading (default is -1 for unlimited)
 - Monitor performance daily for first week
 
 ### Trailing Orders
