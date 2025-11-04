@@ -262,7 +262,7 @@ class HistoricalDataFetcher:
         # Symbol
         print(f"\n{Fore.GREEN}Step 1: Select Trading Pair{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Examples: BTC/USD, ETH/USD, BTC/USDT, ETH/BTC{Style.RESET_ALL}")
-        symbol = input(f"{Fore.CYAN}Enter trading pair:{Style.RESET_ALL} ").strip().upper()
+        symbol = input(f"{Fore.CYAN}Enter trading pair (default: BTC/USDT):{Style.RESET_ALL} ").strip().upper() or 'BTC/USDT'
         
         # Timeframe
         print(f"\n{Fore.GREEN}Step 2: Select Timeframe{Style.RESET_ALL}")

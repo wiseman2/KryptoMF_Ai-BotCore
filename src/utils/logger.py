@@ -21,6 +21,8 @@ import logging
 import sys
 import re
 from typing import Optional, List, Pattern
+from pathlib import Path
+from logging.handlers import RotatingFileHandler
 from colorama import Fore, Style, init
 
 # Initialize colorama for Windows support
@@ -174,47 +176,144 @@ class ColoredFormatter(logging.Formatter):
         return super().format(record)
 
 
-def setup_logger(verbose: bool = False) -> logging.Logger:
+def setup_logger(verbose: bool = False, log_file: Optional[str] = None) -> logging.Logger:
     """
-    Setup the root logger with console output.
-    
+    Setup the root logger with console output and optional file logging.
+
     Args:
         verbose: Enable verbose (DEBUG) logging
-        
+        log_file: Optional path to log file. If None, uses default 'logs/bot.log'
+
     Returns:
         Configured logger
     """
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
-    
+
     # Remove existing handlers
     logger.handlers.clear()
-    
-    # Console handler
+
+    # Add secure filter to prevent credential leakage
+    secure_filter = SecureFilter()
+
+    # Console handler (with colors)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
-    
-    # Formatter
-    formatter = ColoredFormatter(
+    console_handler.addFilter(secure_filter)
+
+    # Colored formatter for console
+    console_formatter = ColoredFormatter(
         fmt='[%(asctime)s] %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
-    console_handler.setFormatter(formatter)
-    
+    console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
-    
+
+    # File handler (without colors, with rotation)
+    if log_file is None:
+        # Default log directory
+        log_dir = Path(__file__).parent.parent.parent / 'logs'
+        log_dir.mkdir(exist_ok=True)
+        log_file = log_dir / 'bot.log'
+    else:
+        log_file = Path(log_file)
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Rotating file handler: 10MB max, keep 10 backup files
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=10 * 1024 * 1024,  # 10 MB
+        backupCount=10,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.DEBUG)  # Always log DEBUG to file
+    file_handler.addFilter(secure_filter)
+
+    # Plain formatter for file (no colors)
+    file_formatter = logging.Formatter(
+        fmt='[%(asctime)s] %(levelname)s - %(name)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    file_handler.setFormatter(file_formatter)
+    logger.addHandler(file_handler)
+
+    logger.info(f"Logging to file: {log_file}")
+
     return logger
 
 
 def get_logger(name: str) -> logging.Logger:
     """
     Get a logger for a specific module.
-    
+
     Args:
         name: Module name (usually __name__)
-        
+
     Returns:
         Logger instance
     """
     return logging.getLogger(name)
+
+
+def setup_session_logger(mode: str, symbol: str = None, strategy: str = None) -> Path:
+    """
+    Setup a session-specific log file for backtest, live, or paper trading.
+
+    Creates a dedicated log file with timestamp and session details.
+
+    Args:
+        mode: Trading mode ('backtest', 'live', 'paper')
+        symbol: Trading symbol (e.g., 'BTC/USD')
+        strategy: Strategy name (e.g., 'advanced_dca')
+
+    Returns:
+        Path to the session log file
+    """
+    from datetime import datetime
+
+    # Create logs directory
+    log_dir = Path(__file__).parent.parent.parent / 'logs'
+    log_dir.mkdir(exist_ok=True)
+
+    # Create session-specific subdirectory
+    session_dir = log_dir / mode
+    session_dir.mkdir(exist_ok=True)
+
+    # Generate filename with timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    # Build filename parts
+    parts = [mode, timestamp]
+    if symbol:
+        parts.append(symbol.replace('/', '-'))
+    if strategy:
+        parts.append(strategy)
+
+    filename = '_'.join(parts) + '.log'
+    log_file = session_dir / filename
+
+    # Add file handler to root logger
+    logger = logging.getLogger()
+
+    # Create session file handler
+    session_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=50 * 1024 * 1024,  # 50 MB for session logs
+        backupCount=5,
+        encoding='utf-8'
+    )
+    session_handler.setLevel(logging.DEBUG)
+    session_handler.addFilter(SecureFilter())
+
+    # Plain formatter for file
+    session_formatter = logging.Formatter(
+        fmt='[%(asctime)s] %(levelname)s - %(name)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    session_handler.setFormatter(session_formatter)
+    logger.addHandler(session_handler)
+
+    logger.info(f"Session log created: {log_file}")
+
+    return log_file
 

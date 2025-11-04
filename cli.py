@@ -23,7 +23,7 @@ from cli.bot_controller import run_interactive_mode
 from backtesting.backtest_engine import BacktestEngine
 from backtesting.backtest_results import BacktestResults
 from backtesting.historical_data import HistoricalDataFetcher
-from utils.logger import setup_logger
+from utils.logger import setup_logger, setup_session_logger
 
 
 def main():
@@ -117,6 +117,14 @@ def main():
     try:
         if run_backtest:
             logger.info("Starting backtest...")
+
+            # Setup session-specific log file for this backtest
+            session_log = setup_session_logger(
+                mode='backtest',
+                symbol=config.get('symbol', 'BTC/USD'),
+                strategy=config.get('strategy', 'unknown')
+            )
+            logger.info(f"Backtest session log: {session_log}")
 
             # Get backtest parameters (interactive or from args)
             if args.backtest_data:
@@ -263,6 +271,15 @@ def main():
             BacktestResults.save_to_file(results, output_file)
 
         else:
+            # Setup session-specific log file for live/paper trading
+            mode = 'paper' if config.get('paper_trading', False) else 'live'
+            session_log = setup_session_logger(
+                mode=mode,
+                symbol=config.get('symbol', 'BTC/USD'),
+                strategy=config.get('strategy', 'unknown')
+            )
+            logger.info(f"{mode.capitalize()} trading session log: {session_log}")
+
             logger.info("Starting bot...")
             bot.start()
 
