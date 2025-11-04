@@ -94,46 +94,70 @@ class BacktestEngine:
     def run(self, historical_data: pd.DataFrame) -> Dict[str, Any]:
         """
         Run backtest on historical data.
-        
+
         Args:
             historical_data: DataFrame with OHLCV data
-            
+
         Returns:
             Backtest results dictionary
         """
         logger.info("=" * 60)
         logger.info("Starting backtest...")
         logger.info("=" * 60)
-        
+
         if self.strategy is None:
             raise ValueError("No strategy set. Call set_strategy() first.")
-        
+
         if historical_data.empty:
             raise ValueError("No historical data provided")
-        
+
+        # Store full historical data
+        self.historical_data = historical_data
+
         # Initialize strategy
         self.strategy.initialize(self)
-        
-        # Iterate through historical data
-        for index, row in historical_data.iterrows():
-            self._process_candle(row)
-        
+
+        # Minimum lookback period for indicators (need enough data to calculate)
+        # Most indicators need at least 50 candles (e.g., RSI 14, EMA 26, MACD 26+9)
+        min_lookback = 100
+
+        logger.info(f"Processing {len(historical_data)} candles...")
+        logger.info(f"Using {min_lookback} candle lookback for indicator calculations")
+
+        # Iterate through historical data (starting after min_lookback)
+        for i in range(min_lookback, len(historical_data)):
+            # Get current candle
+            current_candle = historical_data.iloc[i]
+
+            # Get lookback window for indicator calculations
+            lookback_window = historical_data.iloc[max(0, i-200):i+1]  # Last 200 candles + current
+
+            self._process_candle(current_candle, lookback_window, i, len(historical_data))
+
         # Calculate final results
         results = self._calculate_results()
-        
+
         logger.info("=" * 60)
         logger.info("Backtest complete!")
         logger.info("=" * 60)
-        
+
         return results
     
-    def _process_candle(self, candle: pd.Series):
+    def _process_candle(self, candle: pd.Series, lookback_df: pd.DataFrame, current_index: int, total_candles: int):
         """
         Process a single candle (bar) of historical data.
-        
+
         Args:
-            candle: Series with OHLCV data
+            candle: Series with OHLCV data for current candle
+            lookback_df: DataFrame with historical lookback window for indicator calculations
+            current_index: Current position in the historical data
+            total_candles: Total number of candles being processed
         """
+        # Progress logging (every 1000 candles)
+        if current_index % 1000 == 0:
+            progress = (current_index / total_candles) * 100
+            logger.info(f"Progress: {progress:.1f}% ({current_index}/{total_candles} candles)")
+
         # Create market data dict for strategy
         market_data = {
             'timestamp': candle.get('timestamp'),
@@ -142,22 +166,23 @@ class BacktestEngine:
             'low': candle.get('low'),
             'close': candle.get('close'),
             'volume': candle.get('volume'),
-            'last': candle.get('close')  # Use close as last price
+            'last': candle.get('close'),  # Use close as last price
+            'ohlcv': lookback_df  # CRITICAL: Pass the lookback window for indicator calculations
         }
-        
+
         # Run strategy analysis
         signal = self.strategy.analyze(market_data)
-        
+
         # Execute signal
         if signal['action'] == 'buy':
             self._execute_buy(signal, market_data)
         elif signal['action'] == 'sell':
             self._execute_sell(signal, market_data)
-        
+
         # Record equity
         current_price = market_data['close']
         equity = self.balance + (self.position * current_price)
-        
+
         self.equity_curve.append({
             'timestamp': market_data['timestamp'],
             'equity': equity,

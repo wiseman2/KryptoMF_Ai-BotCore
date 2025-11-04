@@ -49,6 +49,12 @@ class CCXTExchange(ExchangePlugin):
         self.paper_trading = config.get('paper_trading', False)
         self.exchange = None
 
+        # Adaptive rate limiting (FlexGrid approach)
+        self.request_rate = 0.37  # Initial delay between requests (seconds)
+        self.request_timer = 0  # Timer for adaptive rate adjustment
+        self.min_request_rate = 0.1  # Minimum delay
+        self.max_request_rate = 1.5  # Maximum delay
+
         logger.info(f"Initializing {self.exchange_id} connector")
     
     def connect(self):
@@ -288,20 +294,30 @@ class CCXTExchange(ExchangePlugin):
         logger.debug(f"Fetching open orders for {symbol or 'all symbols'}")
         return self.exchange.fetch_open_orders(symbol)
     
-    def get_market_data(self, symbol: str) -> Dict[str, Any]:
+    def get_market_data(self, symbol: str, timeframe: str = '5m', include_ohlcv: bool = True) -> Dict[str, Any]:
         """
-        Get current market data (ticker).
-        
+        Get current market data (ticker) and OHLCV data for indicator calculations.
+
+        Uses the FlexGrid proven approach:
+        - Fetches enough candles for indicator calculations (2x the longest period)
+        - Converts to pandas DataFrame for technical analysis
+        - Includes adaptive rate limiting
+
         Args:
             symbol: Trading pair
-            
+            timeframe: Timeframe for OHLCV data (default: '5m')
+            include_ohlcv: Whether to include OHLCV DataFrame (default: True)
+
         Returns:
-            Market data
+            Market data dictionary with optional OHLCV DataFrame
         """
+        import pandas as pd
+        import time
+
         logger.debug(f"Fetching market data for {symbol}")
         ticker = self.exchange.fetch_ticker(symbol)
-        
-        return {
+
+        market_data = {
             'symbol': symbol,
             'last': ticker.get('last'),
             'bid': ticker.get('bid'),
@@ -311,6 +327,60 @@ class CCXTExchange(ExchangePlugin):
             'volume': ticker.get('volume'),
             'timestamp': ticker.get('timestamp')
         }
+
+        # Include OHLCV data for indicator calculations (FlexGrid approach)
+        if include_ohlcv:
+            # Calculate required candles: 2x the longest indicator period
+            # Typical indicators: RSI(14), EMA(25), MACD(26), Stoch(14)
+            # Use 2 * 26 = 52, but fetch more for safety (100 candles)
+            limit = 100
+
+            pulling = True
+            while pulling:
+                try:
+                    # Adaptive rate limiting - sleep before request
+                    time.sleep(self.request_rate)
+
+                    # Fetch OHLCV data
+                    candles = self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+
+                    if candles:
+                        # Convert to pandas DataFrame (excluding last incomplete candle)
+                        df = pd.DataFrame(candles[:-1], columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                        market_data['ohlcv'] = df
+                        logger.debug(f"Fetched {len(df)} candles for indicator calculations")
+
+                        # Adaptive rate adjustment - decrease delay on success
+                        current_time = time.perf_counter()
+                        if self.request_timer > 0 and (current_time - self.request_timer) > 300:
+                            # If no errors for 5 minutes, decrease delay
+                            self.request_rate -= 0.02
+                            self.request_timer = current_time
+                            if self.request_rate < self.min_request_rate:
+                                self.request_rate = self.min_request_rate
+                        elif self.request_timer == 0:
+                            self.request_timer = current_time
+
+                        pulling = False
+                    else:
+                        logger.warning(f"No OHLCV data returned for {symbol}")
+                        market_data['ohlcv'] = None
+                        pulling = False
+
+                except Exception as e:
+                    # Check for rate limit error (429)
+                    if "429" in str(e):
+                        logger.warning(f"Rate limit hit for {symbol}, increasing delay")
+                        self.request_rate += 0.02
+                        self.request_rate = min(self.request_rate, self.max_request_rate)
+                        self.request_timer = time.perf_counter()
+                        time.sleep(1)  # Extra delay on rate limit
+                    else:
+                        logger.error(f"Failed to fetch OHLCV data for {symbol}: {e}")
+                        market_data['ohlcv'] = None
+                        pulling = False
+
+        return market_data
     
     def get_orderbook(self, symbol: str, limit: int = 20) -> Dict[str, Any]:
         """
