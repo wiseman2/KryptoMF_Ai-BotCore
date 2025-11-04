@@ -9,6 +9,7 @@ Supports:
 """
 
 import os
+import sys
 import yaml
 import json
 from pathlib import Path
@@ -46,7 +47,109 @@ class ConfigManager:
     def __init__(self):
         self.config_dir = Path(__file__).parent.parent.parent / 'config'
         self.config_dir.mkdir(exist_ok=True)
-    
+
+    def main_menu(self, config_path: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Display main menu for configuration management.
+
+        Args:
+            config_path: Optional path to existing config file
+
+        Returns:
+            Configuration dictionary
+        """
+        while True:
+            print()
+            print("=" * 70)
+            print(f"{Fore.CYAN}KryptoMF Bot - Main Menu{Style.RESET_ALL}")
+            print("=" * 70)
+            print()
+
+            # Check if config exists
+            default_config = self.config_dir / 'bot_config.yaml'
+            has_config = config_path and Path(config_path).exists() or default_config.exists()
+
+            if has_config:
+                config_file = config_path if config_path else str(default_config)
+                print(f"{Fore.GREEN}✓ Configuration found:{Style.RESET_ALL} {config_file}")
+            else:
+                print(f"{Fore.YELLOW}⚠ No configuration found{Style.RESET_ALL}")
+
+            print()
+            print(f"{Fore.CYAN}Options:{Style.RESET_ALL}")
+            print(f"  {Fore.YELLOW}1.{Style.RESET_ALL} Start bot (live/paper trading)")
+            print(f"  {Fore.YELLOW}2.{Style.RESET_ALL} Run backtest (test strategy on historical data)")
+            print(f"  {Fore.YELLOW}3.{Style.RESET_ALL} Create new configuration (interactive setup)")
+            print(f"  {Fore.YELLOW}4.{Style.RESET_ALL} Edit existing configuration")
+            print(f"  {Fore.YELLOW}5.{Style.RESET_ALL} Update API credentials (keychain)")
+            print(f"  {Fore.YELLOW}6.{Style.RESET_ALL} View current configuration")
+            print(f"  {Fore.YELLOW}7.{Style.RESET_ALL} Delete API credentials from keychain")
+            print(f"  {Fore.YELLOW}8.{Style.RESET_ALL} Exit")
+            print()
+
+            choice = input(f"{Fore.YELLOW}Select option (1-8):{Style.RESET_ALL} ").strip()
+
+            if choice == '1':
+                # Start with existing config
+                if has_config:
+                    config_file = config_path if config_path else str(default_config)
+                    config = self.load_config(config_file)
+                    config['_mode'] = 'live'  # Mark as live trading mode
+                    return config
+                else:
+                    print(f"{Fore.RED}✗ No configuration found. Please create one first.{Style.RESET_ALL}")
+                    input("Press Enter to continue...")
+
+            elif choice == '2':
+                # Run backtest
+                if has_config:
+                    config_file = config_path if config_path else str(default_config)
+                    config = self.load_config(config_file)
+                    config['_mode'] = 'backtest'  # Mark as backtest mode
+                    return config
+                else:
+                    print(f"{Fore.RED}✗ No configuration found. Please create one first.{Style.RESET_ALL}")
+                    input("Press Enter to continue...")
+
+            elif choice == '3':
+                # Create new configuration
+                return self.interactive_setup()
+
+            elif choice == '4':
+                # Edit existing configuration
+                if has_config:
+                    config_file = config_path if config_path else str(default_config)
+                    self.edit_config(config_file)
+                else:
+                    print(f"{Fore.RED}✗ No configuration found. Please create one first.{Style.RESET_ALL}")
+                    input("Press Enter to continue...")
+
+            elif choice == '5':
+                # Update API credentials
+                self.update_credentials()
+
+            elif choice == '6':
+                # View configuration
+                if has_config:
+                    config_file = config_path if config_path else str(default_config)
+                    self.view_config(config_file)
+                else:
+                    print(f"{Fore.RED}✗ No configuration found.{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+
+            elif choice == '7':
+                # Delete credentials
+                self.delete_credentials()
+
+            elif choice == '8':
+                # Exit
+                print(f"{Fore.YELLOW}Exiting...{Style.RESET_ALL}")
+                sys.exit(0)
+
+            else:
+                print(f"{Fore.RED}✗ Invalid option. Please select 1-8.{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+
     def load_config(self, config_path: str) -> Dict[str, Any]:
         """
         Load configuration from file with validation.
@@ -184,8 +287,25 @@ class ConfigManager:
 
         config = {}
 
+        # Trading mode FIRST - determines if we need API credentials
+        print(f"{Fore.GREEN}Step 1: Trading Mode{Style.RESET_ALL}")
+        print("-" * 70)
+        print(f"{Fore.YELLOW}ℹ️  Choose your trading mode:{Style.RESET_ALL}")
+        print(f"  • {Fore.CYAN}Paper Trading:{Style.RESET_ALL} Test strategies with simulated trades (no real money)")
+        print(f"  • {Fore.CYAN}Live Trading:{Style.RESET_ALL} Execute real trades on the exchange")
+        print()
+        paper_trading = input(f"Enable paper trading mode? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower()
+        config['paper_trading'] = paper_trading != 'n'
+
+        if config['paper_trading']:
+            print(f"{Fore.GREEN}✓ Paper trading enabled - No real orders will be placed{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}ℹ️  API credentials are NOT required for paper trading{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.RED}⚠️  LIVE TRADING ENABLED - Real orders will be placed!{Style.RESET_ALL}")
+
         # Exchange selection
-        print(f"{Fore.GREEN}Step 1: Select Exchange{Style.RESET_ALL}")
+        print()
+        print(f"{Fore.GREEN}Step 2: Select Exchange{Style.RESET_ALL}")
         print("-" * 70)
         print("Available exchanges:")
         print(f"  {Fore.CYAN}1.{Style.RESET_ALL} Binance US")
@@ -206,33 +326,37 @@ class ConfigManager:
         }
         config['exchange'] = exchange_map.get(exchange_choice, 'binance_us')
 
-        # API credentials
-        print()
-        print(f"{Fore.GREEN}Step 2: API Credentials{Style.RESET_ALL}")
-        print("-" * 70)
-        print(f"{Fore.YELLOW}⚠️  SECURITY BEST PRACTICES:{Style.RESET_ALL}")
-        print("  • Your API keys will be stored securely in your OS keychain")
-        print("  • Enable TRADING permissions on your API keys")
-        print("  • DISABLE WITHDRAWAL permissions (important!)")
-        print("  • Enable IP whitelisting if possible")
-        print()
-
-        api_key = input(f"{Fore.YELLOW}Enter API key:{Style.RESET_ALL} ").strip()
-        api_secret = input(f"{Fore.YELLOW}Enter API secret:{Style.RESET_ALL} ").strip()
-
-        config['api_key'] = api_key
-        config['api_secret'] = api_secret
-
-        # Passphrase for exchanges that require it
-        if config['exchange'] in EXCHANGES_WITH_PASSPHRASE:
+        # API credentials - ONLY if NOT paper trading
+        if not config['paper_trading']:
             print()
-            print(f"{Fore.YELLOW}This exchange requires an API passphrase.{Style.RESET_ALL}")
-            passphrase = input(f"{Fore.YELLOW}Enter API passphrase:{Style.RESET_ALL} ").strip()
-            config['passphrase'] = passphrase
-        
+            print(f"{Fore.GREEN}Step 3: API Credentials{Style.RESET_ALL}")
+            print("-" * 70)
+            print(f"{Fore.YELLOW}⚠️  SECURITY BEST PRACTICES:{Style.RESET_ALL}")
+            print("  • Your API keys will be stored securely in your OS keychain")
+            print("  • Enable TRADING permissions on your API keys")
+            print("  • DISABLE WITHDRAWAL permissions (important!)")
+            print("  • Enable IP whitelisting if possible")
+            print()
+
+            api_key = input(f"{Fore.YELLOW}Enter API key:{Style.RESET_ALL} ").strip()
+            api_secret = input(f"{Fore.YELLOW}Enter API secret:{Style.RESET_ALL} ").strip()
+
+            config['api_key'] = api_key
+            config['api_secret'] = api_secret
+
+            # Passphrase for exchanges that require it
+            if config['exchange'] in EXCHANGES_WITH_PASSPHRASE:
+                print()
+                print(f"{Fore.YELLOW}This exchange requires an API passphrase.{Style.RESET_ALL}")
+                passphrase = input(f"{Fore.YELLOW}Enter API passphrase:{Style.RESET_ALL} ").strip()
+                config['passphrase'] = passphrase
+        else:
+            print()
+            print(f"{Fore.YELLOW}ℹ️  Skipping API credentials (not needed for paper trading){Style.RESET_ALL}")
+
         # Trading pair
         print()
-        print(f"{Fore.GREEN}Step 3: Trading Pair{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}Step {'4' if not config['paper_trading'] else '3'}: Trading Pair{Style.RESET_ALL}")
         print("-" * 70)
         print("Examples: BTC/USD, ETH/USD, BTC/USDT, ETH/BTC")
         config['symbol'] = input(f"{Fore.YELLOW}Enter trading pair:{Style.RESET_ALL} ").strip().upper()
@@ -399,18 +523,6 @@ class ConfigManager:
             'stop_loss_percent': float(stop_loss or "5")
         }
 
-        # Paper trading
-        print()
-        print(f"{Fore.GREEN}Step 10: Trading Mode{Style.RESET_ALL}")
-        print("-" * 70)
-        paper_trading = input(f"Enable paper trading mode? (y/n) [{Fore.CYAN}y{Style.RESET_ALL}]: ").strip().lower()
-        config['paper_trading'] = paper_trading != 'n'
-
-        if config['paper_trading']:
-            print(f"{Fore.YELLOW}⚠️  Paper trading enabled - No real orders will be placed{Style.RESET_ALL}")
-        else:
-            print(f"{Fore.RED}⚠️  LIVE TRADING ENABLED - Real orders will be placed!{Style.RESET_ALL}")
-
         # Save configuration
         print()
         print("=" * 70)
@@ -425,6 +537,22 @@ class ConfigManager:
         save_config = input(f"{Fore.YELLOW}Save this configuration? (y/n):{Style.RESET_ALL} ").strip().lower()
 
         if save_config == 'y':
+            # Store API credentials in OS keychain BEFORE saving config
+            # This ensures credentials are never written to the config file
+            if 'api_key' in config and 'api_secret' in config:
+                from security.secret_provider import get_secret_provider
+                secret_provider = get_secret_provider()
+
+                passphrase = config.get('passphrase')  # May be None
+                secret_provider.store_key(
+                    config['exchange'],
+                    config['api_key'],
+                    config['api_secret'],
+                    passphrase
+                )
+                print(f"{Fore.GREEN}✓ API credentials stored securely in OS keychain{Style.RESET_ALL}")
+
+            # Save config file (credentials will be excluded by save_config method)
             config_path = self.config_dir / 'bot_config.yaml'
             self.save_config(config, str(config_path))
             print(f"{Fore.GREEN}✓ Configuration saved to {config_path}{Style.RESET_ALL}")
@@ -436,21 +564,35 @@ class ConfigManager:
         """
         Save configuration to file.
 
+        SECURITY: API credentials are NEVER saved to the config file.
+        They are stored securely in the OS keychain only.
+
         Args:
             config: Configuration dictionary
             config_path: Path to save config file
         """
         path = Path(config_path)
 
+        # Create a copy of config WITHOUT sensitive credentials
+        safe_config = config.copy()
+
+        # Remove sensitive fields that should NEVER be in config files
+        sensitive_fields = ['api_key', 'api_secret', 'passphrase']
+        for field in sensitive_fields:
+            if field in safe_config:
+                del safe_config[field]
+                logger.debug(f"Removed {field} from config file (stored securely in keychain)")
+
         with open(path, 'w') as f:
             if path.suffix in ['.yaml', '.yml']:
-                yaml.dump(config, f, default_flow_style=False)
+                yaml.dump(safe_config, f, default_flow_style=False)
             elif path.suffix == '.json':
-                json.dump(config, f, indent=2)
+                json.dump(safe_config, f, indent=2)
             else:
                 raise ValueError(f"Unsupported config format: {path.suffix}")
 
         logger.info(f"Configuration saved to {config_path}")
+        logger.info("✓ API credentials NOT saved to file (stored securely in OS keychain)")
 
     def _configure_indicators(self) -> Dict[str, Any]:
         """
@@ -625,4 +767,202 @@ class ConfigManager:
                 }
 
         return indicators
+
+    def update_credentials(self):
+        """
+        Update API credentials in the keychain.
+        """
+        print()
+        print("=" * 70)
+        print(f"{Fore.GREEN}Update API Credentials{Style.RESET_ALL}")
+        print("=" * 70)
+        print()
+        print(f"{Fore.YELLOW}This will update the API credentials stored in your OS keychain.{Style.RESET_ALL}")
+        print()
+
+        # Select exchange
+        print(f"{Fore.CYAN}Available exchanges:{Style.RESET_ALL}")
+        print(f"  {Fore.CYAN}1.{Style.RESET_ALL} Binance US")
+        print(f"  {Fore.CYAN}2.{Style.RESET_ALL} Coinbase Pro (requires passphrase)")
+        print(f"  {Fore.CYAN}3.{Style.RESET_ALL} Kraken")
+        print(f"  {Fore.CYAN}4.{Style.RESET_ALL} KuCoin (requires passphrase)")
+        print(f"  {Fore.CYAN}5.{Style.RESET_ALL} Binance (International)")
+        print()
+
+        exchange_choice = input(f"{Fore.YELLOW}Select exchange (1-5):{Style.RESET_ALL} ").strip()
+
+        exchange_map = {
+            '1': 'binance_us',
+            '2': 'coinbasepro',
+            '3': 'kraken',
+            '4': 'kucoin',
+            '5': 'binance'
+        }
+        exchange_id = exchange_map.get(exchange_choice, 'binance_us')
+
+        # Get credentials
+        print()
+        print(f"{Fore.YELLOW}⚠️  SECURITY BEST PRACTICES:{Style.RESET_ALL}")
+        print("  • Enable TRADING permissions on your API keys")
+        print("  • DISABLE WITHDRAWAL permissions (important!)")
+        print("  • Enable IP whitelisting if possible")
+        print()
+
+        api_key = input(f"{Fore.YELLOW}Enter API key:{Style.RESET_ALL} ").strip()
+        api_secret = input(f"{Fore.YELLOW}Enter API secret:{Style.RESET_ALL} ").strip()
+
+        passphrase = None
+        if exchange_id in EXCHANGES_WITH_PASSPHRASE:
+            print()
+            print(f"{Fore.YELLOW}This exchange requires an API passphrase.{Style.RESET_ALL}")
+            passphrase = input(f"{Fore.YELLOW}Enter API passphrase:{Style.RESET_ALL} ").strip()
+
+        # Store in keychain
+        from security.secret_provider import get_secret_provider
+        secret_provider = get_secret_provider()
+
+        secret_provider.store_key(exchange_id, api_key, api_secret, passphrase)
+
+        print()
+        print(f"{Fore.GREEN}✓ API credentials updated successfully in OS keychain{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}✓ Exchange: {exchange_id}{Style.RESET_ALL}")
+        print()
+        input("Press Enter to continue...")
+
+    def delete_credentials(self):
+        """
+        Delete API credentials from the keychain.
+        """
+        print()
+        print("=" * 70)
+        print(f"{Fore.RED}Delete API Credentials{Style.RESET_ALL}")
+        print("=" * 70)
+        print()
+        print(f"{Fore.YELLOW}⚠️  This will delete API credentials from your OS keychain.{Style.RESET_ALL}")
+        print()
+
+        exchange_id = input(f"{Fore.YELLOW}Enter exchange ID (e.g., binance_us, coinbasepro):{Style.RESET_ALL} ").strip()
+
+        confirm = input(f"{Fore.RED}Are you sure you want to delete credentials for {exchange_id}? (yes/no):{Style.RESET_ALL} ").strip().lower()
+
+        if confirm == 'yes':
+            from security.secret_provider import get_secret_provider
+            secret_provider = get_secret_provider()
+
+            secret_provider.delete_key(exchange_id)
+
+            print()
+            print(f"{Fore.GREEN}✓ Credentials deleted for {exchange_id}{Style.RESET_ALL}")
+        else:
+            print()
+            print(f"{Fore.YELLOW}Cancelled.{Style.RESET_ALL}")
+
+        print()
+        input("Press Enter to continue...")
+
+    def view_config(self, config_path: str):
+        """
+        Display the current configuration.
+        """
+        print()
+        print("=" * 70)
+        print(f"{Fore.GREEN}Current Configuration{Style.RESET_ALL}")
+        print("=" * 70)
+        print()
+
+        try:
+            config = self.load_config(config_path)
+
+            print(f"{Fore.CYAN}Exchange:{Style.RESET_ALL} {config.get('exchange', 'N/A')}")
+            print(f"{Fore.CYAN}Symbol:{Style.RESET_ALL} {config.get('symbol', 'N/A')}")
+            print(f"{Fore.CYAN}Strategy:{Style.RESET_ALL} {config.get('strategy', 'N/A')}")
+            print(f"{Fore.CYAN}Paper Trading:{Style.RESET_ALL} {config.get('paper_trading', 'N/A')}")
+
+            if 'strategy_params' in config:
+                print()
+                print(f"{Fore.CYAN}Strategy Parameters:{Style.RESET_ALL}")
+                for key, value in config['strategy_params'].items():
+                    print(f"  {key}: {value}")
+
+            if 'risk' in config:
+                print()
+                print(f"{Fore.CYAN}Risk Management:{Style.RESET_ALL}")
+                for key, value in config['risk'].items():
+                    print(f"  {key}: {value}")
+
+            print()
+            print(f"{Fore.YELLOW}Note: API credentials are stored securely in OS keychain (not shown){Style.RESET_ALL}")
+
+        except Exception as e:
+            print(f"{Fore.RED}✗ Error loading configuration: {e}{Style.RESET_ALL}")
+
+        print()
+
+    def edit_config(self, config_path: str):
+        """
+        Edit existing configuration file.
+        """
+        print()
+        print("=" * 70)
+        print(f"{Fore.GREEN}Edit Configuration{Style.RESET_ALL}")
+        print("=" * 70)
+        print()
+
+        try:
+            config = self.load_config(config_path)
+
+            print(f"{Fore.CYAN}What would you like to edit?{Style.RESET_ALL}")
+            print(f"  {Fore.YELLOW}1.{Style.RESET_ALL} Exchange")
+            print(f"  {Fore.YELLOW}2.{Style.RESET_ALL} Trading pair (symbol)")
+            print(f"  {Fore.YELLOW}3.{Style.RESET_ALL} Strategy")
+            print(f"  {Fore.YELLOW}4.{Style.RESET_ALL} Paper trading mode")
+            print(f"  {Fore.YELLOW}5.{Style.RESET_ALL} Cancel")
+            print()
+
+            choice = input(f"{Fore.YELLOW}Select option (1-5):{Style.RESET_ALL} ").strip()
+
+            if choice == '1':
+                print()
+                print(f"{Fore.CYAN}Current exchange:{Style.RESET_ALL} {config.get('exchange', 'N/A')}")
+                new_exchange = input(f"{Fore.YELLOW}Enter new exchange (e.g., binance_us, coinbasepro):{Style.RESET_ALL} ").strip()
+                if new_exchange:
+                    config['exchange'] = new_exchange
+
+            elif choice == '2':
+                print()
+                print(f"{Fore.CYAN}Current symbol:{Style.RESET_ALL} {config.get('symbol', 'N/A')}")
+                new_symbol = input(f"{Fore.YELLOW}Enter new trading pair (e.g., BTC/USD):{Style.RESET_ALL} ").strip().upper()
+                if new_symbol:
+                    config['symbol'] = new_symbol
+
+            elif choice == '3':
+                print()
+                print(f"{Fore.CYAN}Current strategy:{Style.RESET_ALL} {config.get('strategy', 'N/A')}")
+                print(f"{Fore.YELLOW}Available strategies:{Style.RESET_ALL} dca, advanced_dca, grid_trading")
+                new_strategy = input(f"{Fore.YELLOW}Enter new strategy:{Style.RESET_ALL} ").strip()
+                if new_strategy:
+                    config['strategy'] = new_strategy
+
+            elif choice == '4':
+                print()
+                print(f"{Fore.CYAN}Current paper trading:{Style.RESET_ALL} {config.get('paper_trading', 'N/A')}")
+                paper_trading = input(f"{Fore.YELLOW}Enable paper trading? (y/n):{Style.RESET_ALL} ").strip().lower()
+                config['paper_trading'] = (paper_trading == 'y')
+
+            elif choice == '5':
+                print(f"{Fore.YELLOW}Cancelled.{Style.RESET_ALL}")
+                input("Press Enter to continue...")
+                return
+
+            # Save updated config
+            if choice in ['1', '2', '3', '4']:
+                self.save_config(config, config_path)
+                print()
+                print(f"{Fore.GREEN}✓ Configuration updated successfully{Style.RESET_ALL}")
+
+        except Exception as e:
+            print(f"{Fore.RED}✗ Error editing configuration: {e}{Style.RESET_ALL}")
+
+        print()
+        input("Press Enter to continue...")
 

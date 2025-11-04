@@ -1,7 +1,11 @@
 # KryptoMF Bot Core - Example Configuration
 #
 # Copy this file to bot_config.yaml and customize for your needs.
-# API keys will be stored securely in your OS keychain.
+#
+# SECURITY NOTICE:
+# DO NOT include api_key, api_secret, or passphrase in this file!
+# API credentials are stored securely in your OS keychain during interactive setup.
+# The bot will automatically retrieve them from the keychain when needed.
 
 # Exchange configuration
 exchange: binance_us  # Options: binance_us, coinbase, kraken

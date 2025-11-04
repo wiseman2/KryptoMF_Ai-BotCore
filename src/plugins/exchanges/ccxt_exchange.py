@@ -83,11 +83,15 @@ class CCXTExchange(ExchangePlugin):
             'enableRateLimit': True,  # Respect rate limits
             'timeout': 30000,         # 30 second timeout
         }
-        
+
         if credentials:
-            api_key, api_secret = credentials
+            api_key, api_secret, passphrase = credentials
             exchange_config['apiKey'] = api_key
             exchange_config['secret'] = api_secret
+
+            # Some exchanges (Coinbase Pro, KuCoin, OKX) require a passphrase
+            if passphrase:
+                exchange_config['password'] = passphrase
         
         self.exchange = exchange_class(exchange_config)
         

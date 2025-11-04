@@ -71,10 +71,12 @@ class _DeprecatedBotEngine:
         # Store API credentials if provided in config
         if 'api_key' in self.config and 'api_secret' in self.config:
             logger.info("Storing API credentials in secure keychain...")
+            passphrase = self.config.get('passphrase')  # May be None
             self.secret_provider.store_key(
                 self.config.get('exchange'),
                 self.config['api_key'],
-                self.config['api_secret']
+                self.config['api_secret'],
+                passphrase
             )
 
         # Connect to exchange

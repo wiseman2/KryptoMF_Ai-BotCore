@@ -84,19 +84,27 @@ def main():
     
     # Load or create configuration
     config_manager = ConfigManager()
-    
+
     if args.config:
         logger.info(f"Loading configuration from {args.config}")
-        config = config_manager.load_config(args.config)
+        # Show main menu with specified config file
+        config = config_manager.main_menu(config_path=args.config)
     else:
         logger.info("No configuration file specified")
-        config = config_manager.interactive_setup()
-    
+        # Show main menu (will check for default config)
+        config = config_manager.main_menu()
+
     # Override with CLI flags
     if args.paper_trading:
         config['paper_trading'] = True
         logger.info("Paper trading mode enabled")
-    
+
+    # Check if user selected backtest mode from menu
+    run_backtest = args.backtest or config.get('_mode') == 'backtest'
+
+    # Remove internal _mode flag before passing to bot
+    config.pop('_mode', None)
+
     # Create bot instance
     bot = BotInstance(config)
 
@@ -107,7 +115,7 @@ def main():
         sys.exit(1)
 
     try:
-        if args.backtest:
+        if run_backtest:
             logger.info("Starting backtest...")
 
             # Get backtest parameters (interactive or from args)
