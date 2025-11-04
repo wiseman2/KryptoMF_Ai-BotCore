@@ -153,8 +153,8 @@ class BacktestEngine:
 
         # Financial metrics
         final_equity = results['final_equity']
-        profit_loss = results['total_profit']
-        profit_loss_pct = results['return_pct']
+        profit_loss = results['total_return']
+        profit_loss_pct = results['total_return_pct']
 
         pl_color = Fore.GREEN if profit_loss >= 0 else Fore.RED
         pl_sign = "+" if profit_loss >= 0 else ""
@@ -168,17 +168,24 @@ class BacktestEngine:
 
         # Trading metrics
         logger.info(f"Total Trades:         {results['total_trades']}")
+        logger.info(f"  Buy Orders:         {results['buy_trades']}")
+        logger.info(f"  Sell Orders:        {results['sell_trades']}")
         logger.info(f"Winning Trades:       {Fore.GREEN}{results['winning_trades']}{Style.RESET_ALL}")
         logger.info(f"Losing Trades:        {Fore.RED}{results['losing_trades']}{Style.RESET_ALL}")
 
-        if results['total_trades'] > 0:
-            win_rate = (results['winning_trades'] / results['total_trades']) * 100
+        if results['sell_trades'] > 0:
+            win_rate = results['win_rate']
             win_color = Fore.GREEN if win_rate >= 50 else Fore.YELLOW if win_rate >= 30 else Fore.RED
             logger.info(f"Win Rate:             {win_color}{win_rate:.1f}%{Style.RESET_ALL}")
 
         logger.info("")
         logger.info(f"Max Drawdown:         {Fore.RED}{results['max_drawdown']:.2f}%{Style.RESET_ALL}")
-        logger.info(f"Sharpe Ratio:         {results['sharpe_ratio']:.2f}")
+
+        if results['winning_trades'] > 0:
+            logger.info(f"Average Win:          {Fore.GREEN}+${results['avg_win']:.2f}{Style.RESET_ALL}")
+        if results['losing_trades'] > 0:
+            logger.info(f"Average Loss:         {Fore.RED}${results['avg_loss']:.2f}{Style.RESET_ALL}")
+
         logger.info("=" * 70)
 
         return results
@@ -206,6 +213,23 @@ class BacktestEngine:
             profit_loss = equity - self.initial_balance
             profit_loss_pct = (profit_loss / self.initial_balance) * 100
 
+            # Get strategy-specific metrics (active trades, invested amount)
+            active_trades = 0
+            invested_amount = 0.0
+            unrealized_pl = 0.0
+
+            if hasattr(self.strategy, 'purchases'):
+                # DCA-style strategies track purchases
+                active_trades = len(self.strategy.purchases)
+                for purchase in self.strategy.purchases:
+                    invested_amount += purchase.get('cost', 0)
+                    # Calculate unrealized P/L for this purchase
+                    amount = purchase.get('amount', 0)
+                    buy_price = purchase.get('price', 0)
+                    current_value = amount * current_price
+                    cost = purchase.get('cost', 0)
+                    unrealized_pl += (current_value - cost)
+
             # Format profit/loss with color
             from colorama import Fore, Style
             if profit_loss >= 0:
@@ -215,11 +239,19 @@ class BacktestEngine:
                 pl_color = Fore.RED
                 pl_sign = ""
 
+            if unrealized_pl >= 0:
+                upl_color = Fore.GREEN
+                upl_sign = "+"
+            else:
+                upl_color = Fore.RED
+                upl_sign = ""
+
             logger.info(f"Progress: {progress:.1f}% ({current_index}/{total_candles} candles) | "
-                       f"Balance: ${self.balance:,.2f} | "
-                       f"Position: {self.position:.8f} | "
-                       f"Equity: ${equity:,.2f} | "
-                       f"P/L: {pl_color}{pl_sign}${profit_loss:,.2f} ({pl_sign}{profit_loss_pct:.2f}%){Style.RESET_ALL}")
+                       f"Cash: ${self.balance:,.2f} | "
+                       f"Active Trades: {active_trades} | "
+                       f"Invested: ${invested_amount:,.2f} | "
+                       f"Unrealized P/L: {upl_color}{upl_sign}${unrealized_pl:,.2f}{Style.RESET_ALL} | "
+                       f"Total P/L: {pl_color}{pl_sign}${profit_loss:,.2f} ({pl_sign}{profit_loss_pct:.2f}%){Style.RESET_ALL}")
 
         # Create market data dict for strategy
         market_data = {
