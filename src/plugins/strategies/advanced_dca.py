@@ -84,6 +84,9 @@ class AdvancedDCAStrategy(StrategyPlugin):
         self.total_dca_applied = 0.0
         self.bot = None
 
+        # Backtest mode flag (reduces logging noise)
+        self.is_backtest = False
+
         # Trailing state (for bot-managed trailing orders)
         self.trailing_state = {
             'status': 'inactive',  # inactive, waiting, active, triggered
@@ -133,9 +136,11 @@ class AdvancedDCAStrategy(StrategyPlugin):
                 'confidence': 0.0,
                 'reason': 'Insufficient market data'
             }
-        
-        logger.info(f"Current price: ${current_price:,.2f}")
-        logger.info(f"Active purchases: {len(self.purchases)}")
+
+        # Only log in live/paper trading, not backtest
+        if not self.is_backtest:
+            logger.info(f"Current price: ${current_price:,.2f}")
+            logger.info(f"Active purchases: {len(self.purchases)}")
 
         # Check if we've reached max purchases (only if max_purchases is not -1)
         if self.max_purchases != -1 and len(self.purchases) >= self.max_purchases:
@@ -210,17 +215,19 @@ class AdvancedDCAStrategy(StrategyPlugin):
         
         if positive_signals >= (total_signals * 0.6):  # 60% of indicators must agree
             amount = self.amount_usd / current_price
-            
-            logger.info("=" * 60)
-            logger.info("ADVANCED DCA BUY SIGNAL")
-            logger.info("=" * 60)
-            logger.info(f"  Price: ${current_price:,.2f}")
-            logger.info(f"  Amount: {amount:.8f}")
-            logger.info(f"  Cost: ${self.amount_usd:,.2f}")
-            logger.info(f"  Signals: {positive_signals}/{total_signals}")
-            logger.info(f"  Reasons: {', '.join(reasons)}")
-            logger.info("=" * 60)
-            
+
+            # Only show detailed logging in live/paper trading, not backtest
+            if not self.is_backtest:
+                logger.info("=" * 60)
+                logger.info("ADVANCED DCA BUY SIGNAL")
+                logger.info("=" * 60)
+                logger.info(f"  Price: ${current_price:,.2f}")
+                logger.info(f"  Amount: {amount:.8f}")
+                logger.info(f"  Cost: ${self.amount_usd:,.2f}")
+                logger.info(f"  Signals: {positive_signals}/{total_signals}")
+                logger.info(f"  Reasons: {', '.join(reasons)}")
+                logger.info("=" * 60)
+
             return {
                 'action': 'buy',
                 'confidence': positive_signals / total_signals,

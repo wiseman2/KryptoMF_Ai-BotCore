@@ -150,6 +150,9 @@ class DCAStrategy(StrategyPlugin):
         self.ohlcv_cache_time = 0
         self.ohlcv_cache_ttl = config.get('indicator_cache_ttl', 300)  # Cache for 5 minutes
 
+        # Backtest mode flag (reduces logging noise)
+        self.is_backtest = False
+
         logger.info(f"Enhanced DCA Strategy initialized:")
         logger.info(f"  Amount: ${self.amount_usd} per purchase")
         logger.info(f"  Trading fees: {self.maker_fee}% maker, {self.taker_fee}% taker")
@@ -223,7 +226,9 @@ class DCAStrategy(StrategyPlugin):
                 'reason': 'No price data'
             }
 
-        logger.info(f"Current price: ${current_price:,.2f}")
+        # Only log in live/paper trading, not backtest
+        if not self.is_backtest:
+            logger.info(f"Current price: ${current_price:,.2f}")
 
         # Smart indicator checking: Skip if price hasn't moved enough
         if self.smart_checks and self.last_purchase_price:
@@ -389,15 +394,17 @@ class DCAStrategy(StrategyPlugin):
         if positive_signals >= max(1, total_signals * 0.5):  # At least 50% agreement
             amount = self.amount_usd / current_price
 
-            logger.info("=" * 60)
-            logger.info("ENHANCED DCA BUY SIGNAL")
-            logger.info("=" * 60)
-            logger.info(f"  Price: ${current_price:,.2f}")
-            logger.info(f"  Amount: {amount:.8f}")
-            logger.info(f"  Cost: ${self.amount_usd:,.2f}")
-            logger.info(f"  Signals: {positive_signals}/{total_signals}")
-            logger.info(f"  Reasons: {', '.join(reasons)}")
-            logger.info("=" * 60)
+            # Only show detailed logging in live/paper trading, not backtest
+            if not self.is_backtest:
+                logger.info("=" * 60)
+                logger.info("ENHANCED DCA BUY SIGNAL")
+                logger.info("=" * 60)
+                logger.info(f"  Price: ${current_price:,.2f}")
+                logger.info(f"  Amount: {amount:.8f}")
+                logger.info(f"  Cost: ${self.amount_usd:,.2f}")
+                logger.info(f"  Signals: {positive_signals}/{total_signals}")
+                logger.info(f"  Reasons: {', '.join(reasons)}")
+                logger.info("=" * 60)
 
             return {
                 'action': 'buy',

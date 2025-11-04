@@ -32,7 +32,7 @@ class BacktestEngine:
     def __init__(self, config: Dict[str, Any]):
         """
         Initialize backtest engine.
-        
+
         Args:
             config: Backtest configuration
         """
@@ -41,17 +41,20 @@ class BacktestEngine:
         self.start_date = config.get('start_date')
         self.end_date = config.get('end_date')
         self.initial_balance = config.get('initial_balance', 10000.0)
-        
+
         # State
         self.balance = self.initial_balance
         self.position = 0.0  # Current position size
         self.position_cost = 0.0  # Total cost of current position
         self.trades = []
         self.equity_curve = []
-        
+
         # Strategy
         self.strategy = None
-        
+
+        # Backtest mode flag (reduces logging noise)
+        self.is_backtest = True
+
         logger.info(f"Backtest engine initialized")
         logger.info(f"  Symbol: {self.symbol}")
         logger.info(f"  Period: {self.start_date} to {self.end_date}")
@@ -84,11 +87,14 @@ class BacktestEngine:
     def set_strategy(self, strategy):
         """
         Set the trading strategy to backtest.
-        
+
         Args:
             strategy: Strategy instance
         """
         self.strategy = strategy
+        # Set backtest mode on strategy to reduce logging
+        if hasattr(strategy, 'is_backtest'):
+            strategy.is_backtest = True
         logger.info(f"Strategy set: {strategy.config.get('name')}")
     
     def run(self, historical_data: pd.DataFrame) -> Dict[str, Any]:
@@ -208,10 +214,10 @@ class BacktestEngine:
         
         # Calculate cost
         cost = amount * price
-        
+
         # Check if we have enough balance
         if cost > self.balance:
-            logger.warning(f"Insufficient balance for buy: ${cost:.2f} > ${self.balance:.2f}")
+            logger.debug(f"Insufficient balance for buy: ${cost:.2f} > ${self.balance:.2f}")
             return
         
         # Execute buy

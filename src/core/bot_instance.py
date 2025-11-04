@@ -20,8 +20,7 @@ from datetime import datetime
 from utils.logger import get_logger
 from security.secret_provider import get_secret_provider
 from plugins.exchanges.ccxt_exchange import CCXTExchange
-from plugins.strategies.grid_trading import GridTradingStrategy
-from plugins.strategies.dca import DCAStrategy
+from plugins.strategies import get_strategy_class
 
 logger = get_logger(__name__)
 
@@ -134,6 +133,11 @@ class BotInstance:
             if not self.strategy:
                 return
 
+            # Convert stats to JSON-serializable format
+            stats_copy = self.stats.copy()
+            if 'last_update' in stats_copy and isinstance(stats_copy['last_update'], datetime):
+                stats_copy['last_update'] = stats_copy['last_update'].isoformat()
+
             state = {
                 'bot_id': self.bot_id,
                 'name': self.name,
@@ -141,7 +145,7 @@ class BotInstance:
                 'exchange': self.exchange_id,
                 'strategy': self.strategy_name,
                 'last_update': datetime.now().isoformat(),
-                'stats': self.stats.copy(),
+                'stats': stats_copy,
                 'strategy_state': self.strategy.get_state(),
                 'connectivity': {
                     'last_success': datetime.now().isoformat() if self.connectivity_failures == 0 else None,
@@ -287,27 +291,28 @@ class BotInstance:
         return exchange
     
     def _init_strategy(self):
-        """Initialize trading strategy."""
+        """
+        Initialize trading strategy using auto-discovery.
+
+        Strategies are automatically discovered from the plugins/strategies directory.
+        No manual registration required - just add a new .py file with a StrategyPlugin subclass.
+        """
         logger.info(f"[{self.name}] Loading {self.strategy_name} strategy...")
-        
+
         strategy_params = self.config.get('strategy_params', {})
-        
+
         strategy_config = {
             'name': self.strategy_name,
             'params': strategy_params
         }
-        
-        # Create strategy instance
-        if self.strategy_name == 'grid_trading':
-            strategy = GridTradingStrategy(strategy_config)
-        elif self.strategy_name == 'dca':
-            strategy = DCAStrategy(strategy_config)
-        else:
-            raise ValueError(f"Unknown strategy: {self.strategy_name}")
-        
+
+        # Get strategy class using auto-discovery
+        strategy_class = get_strategy_class(self.strategy_name)
+        strategy = strategy_class(strategy_config)
+
         # Initialize with bot instance
         strategy.initialize(self)
-        
+
         return strategy
     
     def start(self):

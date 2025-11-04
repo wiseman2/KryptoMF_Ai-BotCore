@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from colorama import Fore, Style
 from utils.logger import get_logger
+from plugins.strategies import list_strategies, STRATEGIES
 
 logger = get_logger(__name__)
 
@@ -33,20 +34,23 @@ SUPPORTED_EXCHANGES = [
     'kraken', 'kucoin', 'okx', 'bitfinex', 'gemini'
 ]
 
-# Supported strategies
-SUPPORTED_STRATEGIES = [
-    'grid_trading', 'dca', 'momentum'
-]
+# Supported strategies - dynamically loaded from plugins
+# This will be populated by auto-discovery
+SUPPORTED_STRATEGIES = []
 
 
 class ConfigManager:
     """
     Manages bot configuration from files or interactive setup.
     """
-    
+
     def __init__(self):
         self.config_dir = Path(__file__).parent.parent.parent / 'config'
         self.config_dir.mkdir(exist_ok=True)
+
+        # Update supported strategies from auto-discovery
+        global SUPPORTED_STRATEGIES
+        SUPPORTED_STRATEGIES = list_strategies()
 
     def main_menu(self, config_path: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -113,7 +117,9 @@ class ConfigManager:
 
             elif choice == '3':
                 # Create new configuration
-                return self.interactive_setup()
+                self.interactive_setup()
+                # Return to menu after creating config
+                input(f"\n{Fore.GREEN}Press Enter to return to main menu...{Style.RESET_ALL}")
 
             elif choice == '4':
                 # Edit existing configuration
@@ -361,25 +367,34 @@ class ConfigManager:
         print("Examples: BTC/USD, ETH/USD, BTC/USDT, ETH/BTC")
         config['symbol'] = input(f"{Fore.YELLOW}Enter trading pair:{Style.RESET_ALL} ").strip().upper()
 
-        # Strategy selection
+        # Strategy selection (auto-discovered)
         print()
         print(f"{Fore.GREEN}Step 4: Trading Strategy{Style.RESET_ALL}")
         print("-" * 70)
-        print("Available strategies:")
-        print(f"  {Fore.CYAN}1.{Style.RESET_ALL} Grid Trading - Place buy/sell orders at regular intervals")
-        print(f"  {Fore.CYAN}2.{Style.RESET_ALL} DCA (Dollar Cost Averaging) - Buy based on indicators")
-        print(f"  {Fore.CYAN}3.{Style.RESET_ALL} Advanced DCA - DCA with profit reinvestment to reduce cost basis")
-        print(f"  {Fore.CYAN}4.{Style.RESET_ALL} Momentum - Trade based on price momentum (coming soon)")
-        print()
-        strategy_choice = input(f"{Fore.YELLOW}Select strategy (1-4):{Style.RESET_ALL} ").strip()
 
-        strategy_map = {
-            '1': 'grid_trading',
-            '2': 'dca',
-            '3': 'advanced_dca',
-            '4': 'momentum'
+        # Get available strategies from auto-discovery
+        available_strategies = list_strategies()
+
+        # Strategy descriptions (can be extended)
+        strategy_descriptions = {
+            'grid_trading': 'Place buy/sell orders at regular intervals',
+            'dca': 'Buy based on technical indicators',
+            'advanced_dca': 'DCA with profit reinvestment to reduce cost basis',
         }
-        config['strategy'] = strategy_map.get(strategy_choice, 'grid_trading')
+
+        print("Available strategies:")
+        strategy_map = {}
+        for idx, strategy_name in enumerate(available_strategies, 1):
+            description = strategy_descriptions.get(strategy_name, 'Custom strategy')
+            # Format strategy name for display
+            display_name = strategy_name.replace('_', ' ').title()
+            print(f"  {Fore.CYAN}{idx}.{Style.RESET_ALL} {display_name} - {description}")
+            strategy_map[str(idx)] = strategy_name
+
+        print()
+        strategy_choice = input(f"{Fore.YELLOW}Select strategy (1-{len(available_strategies)}):{Style.RESET_ALL} ").strip()
+
+        config['strategy'] = strategy_map.get(strategy_choice, available_strategies[0] if available_strategies else 'dca')
 
         # Strategy parameters
         print()
@@ -574,6 +589,37 @@ class ConfigManager:
             config_path = self.config_dir / 'bot_config.yaml'
             self.save_config(config, str(config_path))
             print(f"{Fore.GREEN}✓ Configuration saved to {config_path}{Style.RESET_ALL}")
+
+            # Show next steps
+            print()
+            print("=" * 70)
+            print(f"{Fore.CYAN}Configuration Created Successfully!{Style.RESET_ALL}")
+            print("=" * 70)
+            print()
+            print(f"{Fore.YELLOW}What's Next?{Style.RESET_ALL}")
+            print()
+            print(f"  {Fore.CYAN}1. Backtest{Style.RESET_ALL} - Test your strategy on historical data")
+            print(f"     • No real money involved")
+            print(f"     • See how strategy would have performed in the past")
+            print(f"     • Validate your settings before going live")
+            print()
+            print(f"  {Fore.CYAN}2. Paper Trading{Style.RESET_ALL} - Test with live market data")
+            print(f"     • No real money involved")
+            print(f"     • Simulated trades using real-time prices")
+            print(f"     • Perfect for testing strategy in current market conditions")
+            if config.get('paper_trading'):
+                print(f"     {Fore.GREEN}✓ You selected paper trading mode{Style.RESET_ALL}")
+            print()
+            print(f"  {Fore.CYAN}3. Live Trading{Style.RESET_ALL} - Execute real trades")
+            print(f"     {Fore.RED}⚠️  REAL MONEY - Use with caution!{Style.RESET_ALL}")
+            print(f"     • Actual trades on the exchange")
+            print(f"     • Only use after thorough backtesting and paper trading")
+            if not config.get('paper_trading'):
+                print(f"     {Fore.YELLOW}⚠️  You selected live trading mode{Style.RESET_ALL}")
+            print()
+            print("=" * 70)
+            print(f"{Fore.GREEN}Returning to main menu...{Style.RESET_ALL}")
+            print("=" * 70)
 
         print()
         return config
@@ -1037,10 +1083,15 @@ class ConfigManager:
             elif choice == '3':
                 print()
                 print(f"{Fore.CYAN}Current strategy:{Style.RESET_ALL} {config.get('strategy', 'N/A')}")
-                print(f"{Fore.YELLOW}Available strategies:{Style.RESET_ALL} dca, advanced_dca, grid_trading")
+                available_strategies = list_strategies()
+                print(f"{Fore.YELLOW}Available strategies:{Style.RESET_ALL} {', '.join(available_strategies)}")
                 new_strategy = input(f"{Fore.YELLOW}Enter new strategy:{Style.RESET_ALL} ").strip()
                 if new_strategy:
-                    config['strategy'] = new_strategy
+                    if new_strategy in available_strategies:
+                        config['strategy'] = new_strategy
+                    else:
+                        print(f"{Fore.RED}✗ Unknown strategy: {new_strategy}{Style.RESET_ALL}")
+                        print(f"{Fore.YELLOW}Available strategies: {', '.join(available_strategies)}{Style.RESET_ALL}")
 
             elif choice == '4':
                 print()

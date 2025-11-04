@@ -171,32 +171,79 @@ def main():
                     logger.info("You can provide a CSV file with --backtest-data instead")
                     sys.exit(1)
 
-            # Create backtest configuration
+            # Interactive backtest parameter setup
+            from colorama import Fore, Style
+
+            print()
+            print("=" * 70)
+            print(f"{Fore.CYAN}{'BACKTEST PARAMETERS':^70}{Style.RESET_ALL}")
+            print("=" * 70)
+
+            # Get defaults from config
+            risk_config = config.get('risk', {})
+            default_balance = risk_config.get('max_position_size') or risk_config.get('initial_balance', 10000.0)
+
+            strategy_params = config.get('strategy_params', {})
+            default_amount = strategy_params.get('amount_usd', 100)
+            default_profit = strategy_params.get('min_profit_percent', 0.5)
+
+            # Ask for initial balance
+            print(f"\n{Fore.GREEN}Initial Balance{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Default: ${default_balance:,.2f}{Style.RESET_ALL}")
+            balance_input = input(f"{Fore.CYAN}Enter initial balance (or press Enter for default):{Style.RESET_ALL} ").strip()
+            initial_balance = float(balance_input) if balance_input else default_balance
+
+            # Ask for amount per trade
+            print(f"\n{Fore.GREEN}Amount Per Trade{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Default: ${default_amount:,.2f}{Style.RESET_ALL}")
+            amount_input = input(f"{Fore.CYAN}Enter amount per trade (or press Enter for default):{Style.RESET_ALL} ").strip()
+            amount_usd = float(amount_input) if amount_input else default_amount
+
+            # Ask for profit percentage
+            print(f"\n{Fore.GREEN}Minimum Profit Percentage{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Default: {default_profit}%{Style.RESET_ALL}")
+            profit_input = input(f"{Fore.CYAN}Enter minimum profit % (or press Enter for default):{Style.RESET_ALL} ").strip()
+            min_profit_percent = float(profit_input) if profit_input else default_profit
+
+            # Update strategy params with backtest values
+            backtest_strategy_params = strategy_params.copy()
+            backtest_strategy_params['amount_usd'] = amount_usd
+            backtest_strategy_params['min_profit_percent'] = min_profit_percent
+
+            # Show summary
+            print()
+            print("=" * 70)
+            print(f"{Fore.GREEN}{'BACKTEST CONFIGURATION':^70}{Style.RESET_ALL}")
+            print("=" * 70)
+            print(f"Initial Balance:      {Fore.CYAN}${initial_balance:,.2f}{Style.RESET_ALL}")
+            print(f"Amount Per Trade:     {Fore.CYAN}${amount_usd:,.2f}{Style.RESET_ALL}")
+            print(f"Min Profit %:         {Fore.CYAN}{min_profit_percent}%{Style.RESET_ALL}")
+            print("=" * 70)
+            print()
+
             backtest_config = {
                 'symbol': symbol,
                 'start_date': start_date,
                 'end_date': end_date,
-                'initial_balance': config.get('risk', {}).get('max_position_size', 10000.0),
+                'initial_balance': initial_balance,
                 'strategy': config.get('strategy'),
-                'strategy_params': config.get('strategy_params', {})
+                'strategy_params': backtest_strategy_params
             }
 
             # Create backtest engine
             backtest = BacktestEngine(backtest_config)
 
-            # Set strategy (reuse bot's strategy initialization)
-            from plugins.strategies.grid_trading import GridTradingStrategy
-            from plugins.strategies.dca import DCAStrategy
+            # Set strategy using auto-discovery
+            from plugins.strategies import get_strategy_class
 
             strategy_name = config.get('strategy', 'grid_trading')
             strategy_params = config.get('strategy_params', {})
 
-            if strategy_name == 'grid_trading':
-                strategy = GridTradingStrategy({'name': strategy_name, 'params': strategy_params})
-            elif strategy_name == 'dca':
-                strategy = DCAStrategy({'name': strategy_name, 'params': strategy_params})
-            else:
-                logger.error(f"Unknown strategy: {strategy_name}")
+            try:
+                strategy_class = get_strategy_class(strategy_name)
+                strategy = strategy_class({'name': strategy_name, 'params': strategy_params})
+            except ValueError as e:
+                logger.error(str(e))
                 sys.exit(1)
 
             backtest.set_strategy(strategy)
