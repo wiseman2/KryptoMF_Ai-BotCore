@@ -131,12 +131,19 @@ On bot startup, the state is automatically restored:
 
 ### How It Works
 
-The bot now monitors internet connectivity to avoid wasting cycles and detect network issues:
+The bot monitors internet connectivity to avoid wasting cycles and detect network issues:
 
 1. **Periodic Checks** - Every 2 minutes (configurable)
-2. **Quick Ping** - Uses lightweight `fetch_time()` or `fetch_status()` API call
-3. **Failure Tracking** - Counts consecutive failures
-4. **Exponential Backoff** - Waits longer between retries after failures
+2. **Simple Ping** - Uses socket connection to Google DNS (8.8.8.8:53) - no API keys required
+3. **Works for All Modes** - Paper trading and live trading both need internet for market data
+4. **Failure Tracking** - Counts consecutive failures
+5. **Exponential Backoff** - Waits longer between retries after failures
+
+**Why Google DNS?**
+- No authentication required (works for paper trading)
+- Highly reliable (99.99% uptime)
+- Fast response (< 100ms typically)
+- Works worldwide
 
 ### Connectivity Check Flow
 

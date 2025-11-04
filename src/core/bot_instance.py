@@ -202,42 +202,45 @@ class BotInstance:
 
     def _check_connectivity(self) -> bool:
         """
-        Check internet connectivity to exchange.
+        Check internet connectivity by pinging a reliable public endpoint.
+
+        Uses Google DNS (8.8.8.8) for a simple connectivity check that doesn't
+        require API keys or authentication.
 
         Returns:
             True if connected, False otherwise
         """
         try:
-            if not self.exchange:
-                return False
+            import socket
 
-            # Check if we can reach the exchange
-            is_connected = self.exchange.check_connectivity()
+            # Simple connectivity check - ping Google DNS
+            # This works for both live trading and paper trading
+            socket.create_connection(("8.8.8.8", 53), timeout=3)
 
-            if is_connected:
-                # Reset failure counter on success
-                if self.connectivity_failures > 0:
-                    logger.info(f"[{self.name}] ✓ Connectivity check passed after {self.connectivity_failures} failures")
-                    self.connectivity_failures = 0
-                return True
-            else:
-                # Increment failure counter
-                self.connectivity_failures += 1
-                logger.warning(f"[{self.name}] ⚠️  Connectivity check failed (failure #{self.connectivity_failures})")
+            # Reset failure counter on success
+            if self.connectivity_failures > 0:
+                logger.info(f"[{self.name}] ✓ Connectivity restored after {self.connectivity_failures} failures")
+                self.connectivity_failures = 0
 
-                # Reset trailing state after max failures
-                if self.connectivity_failures >= self.max_connectivity_failures:
-                    self._reset_trailing_state()
+            return True
 
-                # Wait before retrying
-                backoff_time = min(30 * self.connectivity_failures, 300)  # Max 5 minutes
-                logger.info(f"[{self.name}] Waiting {backoff_time}s before retry...")
-                time.sleep(backoff_time)
+        except (socket.error, socket.timeout) as e:
+            # Increment failure counter
+            self.connectivity_failures += 1
+            logger.warning(f"[{self.name}] ⚠️  No internet connection (failure #{self.connectivity_failures})")
 
-                return False
+            # Reset trailing state after max failures
+            if self.connectivity_failures >= self.max_connectivity_failures:
+                self._reset_trailing_state()
+
+            # Wait before retrying with exponential backoff
+            backoff_time = min(30 * self.connectivity_failures, 300)  # Max 5 minutes
+            logger.info(f"[{self.name}] Waiting {backoff_time}s before retry...")
+            time.sleep(backoff_time)
+
+            return False
 
         except Exception as e:
-            self.connectivity_failures += 1
             logger.error(f"[{self.name}] Connectivity check error: {e}")
 
             # Reset trailing state after max failures

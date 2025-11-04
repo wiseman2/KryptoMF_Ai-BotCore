@@ -123,24 +123,32 @@ class CCXTExchange(ExchangePlugin):
 
     def check_connectivity(self) -> bool:
         """
-        Check if exchange is reachable.
+        Check if exchange API is reachable using public endpoints (no API key required).
+
+        NOTE: This method is deprecated for connectivity checks. The bot now uses
+        a simple socket connection to Google DNS (8.8.8.8) for internet connectivity
+        checks, which works for both live and paper trading without requiring API keys.
+
+        This method can still be used to verify exchange-specific connectivity if needed.
 
         Returns:
             True if connected, False otherwise
         """
         try:
-            # Quick ping to exchange - fetch status or time
-            if hasattr(self.exchange, 'fetch_status'):
-                self.exchange.fetch_status()
+            # Use public endpoint that doesn't require API key
+            # fetch_markets() is a lightweight public call available on all exchanges
+            if hasattr(self.exchange, 'fetch_markets'):
+                # Just check if we can reach the exchange - don't need the full result
+                self.exchange.fetch_markets()
             else:
-                # Fallback: fetch server time (lightweight call)
-                self.exchange.fetch_time()
+                # Fallback: try to load markets (also public)
+                self.exchange.load_markets()
 
-            logger.debug(f"Connectivity check passed for {self.exchange_id}")
+            logger.debug(f"Exchange connectivity check passed for {self.exchange_id}")
             return True
 
         except Exception as e:
-            logger.warning(f"Connectivity check failed for {self.exchange_id}: {e}")
+            logger.warning(f"Exchange connectivity check failed for {self.exchange_id}: {e}")
             return False
 
     def get_balance(self) -> Dict[str, float]:

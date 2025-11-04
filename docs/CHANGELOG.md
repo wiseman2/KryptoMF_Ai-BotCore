@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2025-11-03
+
+### Fixed
+- **Connectivity check for paper trading** - Changed connectivity check from exchange API calls to simple socket ping to Google DNS (8.8.8.8:53)
+  - Fixes "API-key format invalid" error in paper trading mode
+  - No API keys required for connectivity check
+  - Works for both live and paper trading modes
+  - Both modes need internet to fetch market data (current or historical)
+
 ## [0.3.0] - 2025-11-03
 
 ### Added - State Persistence & Reliability
@@ -23,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Connectivity Monitoring
 - **Periodic connectivity checks** - Checks internet connectivity every 2 minutes (configurable)
-- **Lightweight ping** - Uses `fetch_time()` or `fetch_status()` for quick connectivity verification
+- **Simple socket ping** - Uses socket connection to Google DNS (8.8.8.8:53) - no API keys required
+- **Works for all modes** - Paper trading and live trading both need internet for market data
 - **Failure tracking** - Counts consecutive connectivity failures
 - **Exponential backoff** - Waits longer between retries after failures (30s, 60s, 120s, 240s, max 300s)
 - **Trailing state reset** - Automatically resets trailing state after 2+ connectivity failures

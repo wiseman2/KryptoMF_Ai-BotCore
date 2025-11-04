@@ -209,7 +209,7 @@ Provides a comprehensive configuration template for all strategies with detailed
 
 ### 1. Install Dependencies
 ```bash
-cd tempBotCore
+cd BotCore
 pip install -r requirements.txt
 ```
 

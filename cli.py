@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+changes to #!/usr/bin/env python3
 """
 KryptoMF Bot Core - CLI Entry Point
 
