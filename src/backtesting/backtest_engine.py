@@ -143,9 +143,43 @@ class BacktestEngine:
         # Calculate final results
         results = self._calculate_results()
 
-        logger.info("=" * 60)
-        logger.info("Backtest complete!")
-        logger.info("=" * 60)
+        # Display final summary
+        from colorama import Fore, Style
+
+        logger.info("")
+        logger.info("=" * 70)
+        logger.info(f"{Fore.CYAN}{'BACKTEST RESULTS':^70}{Style.RESET_ALL}")
+        logger.info("=" * 70)
+
+        # Financial metrics
+        final_equity = results['final_equity']
+        profit_loss = results['total_profit']
+        profit_loss_pct = results['return_pct']
+
+        pl_color = Fore.GREEN if profit_loss >= 0 else Fore.RED
+        pl_sign = "+" if profit_loss >= 0 else ""
+
+        logger.info(f"Initial Balance:      ${self.initial_balance:,.2f}")
+        logger.info(f"Final Balance:        ${self.balance:,.2f}")
+        logger.info(f"Final Position:       {self.position:.8f}")
+        logger.info(f"Final Equity:         ${final_equity:,.2f}")
+        logger.info(f"Total Profit/Loss:    {pl_color}{pl_sign}${profit_loss:,.2f} ({pl_sign}{profit_loss_pct:.2f}%){Style.RESET_ALL}")
+        logger.info("")
+
+        # Trading metrics
+        logger.info(f"Total Trades:         {results['total_trades']}")
+        logger.info(f"Winning Trades:       {Fore.GREEN}{results['winning_trades']}{Style.RESET_ALL}")
+        logger.info(f"Losing Trades:        {Fore.RED}{results['losing_trades']}{Style.RESET_ALL}")
+
+        if results['total_trades'] > 0:
+            win_rate = (results['winning_trades'] / results['total_trades']) * 100
+            win_color = Fore.GREEN if win_rate >= 50 else Fore.YELLOW if win_rate >= 30 else Fore.RED
+            logger.info(f"Win Rate:             {win_color}{win_rate:.1f}%{Style.RESET_ALL}")
+
+        logger.info("")
+        logger.info(f"Max Drawdown:         {Fore.RED}{results['max_drawdown']:.2f}%{Style.RESET_ALL}")
+        logger.info(f"Sharpe Ratio:         {results['sharpe_ratio']:.2f}")
+        logger.info("=" * 70)
 
         return results
     
@@ -162,7 +196,30 @@ class BacktestEngine:
         # Progress logging (every 1000 candles)
         if current_index % 1000 == 0:
             progress = (current_index / total_candles) * 100
-            logger.info(f"Progress: {progress:.1f}% ({current_index}/{total_candles} candles)")
+
+            # Calculate current equity (balance + position value)
+            current_price = candle.get('close')
+            position_value = self.position * current_price
+            equity = self.balance + position_value
+
+            # Calculate profit/loss
+            profit_loss = equity - self.initial_balance
+            profit_loss_pct = (profit_loss / self.initial_balance) * 100
+
+            # Format profit/loss with color
+            from colorama import Fore, Style
+            if profit_loss >= 0:
+                pl_color = Fore.GREEN
+                pl_sign = "+"
+            else:
+                pl_color = Fore.RED
+                pl_sign = ""
+
+            logger.info(f"Progress: {progress:.1f}% ({current_index}/{total_candles} candles) | "
+                       f"Balance: ${self.balance:,.2f} | "
+                       f"Position: {self.position:.8f} | "
+                       f"Equity: ${equity:,.2f} | "
+                       f"P/L: {pl_color}{pl_sign}${profit_loss:,.2f} ({pl_sign}{profit_loss_pct:.2f}%){Style.RESET_ALL}")
 
         # Create market data dict for strategy
         market_data = {

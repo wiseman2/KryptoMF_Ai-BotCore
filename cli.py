@@ -237,7 +237,8 @@ def main():
             from plugins.strategies import get_strategy_class
 
             strategy_name = config.get('strategy', 'grid_trading')
-            strategy_params = config.get('strategy_params', {})
+            # Use backtest_strategy_params instead of original config params
+            strategy_params = backtest_strategy_params
 
             try:
                 strategy_class = get_strategy_class(strategy_name)

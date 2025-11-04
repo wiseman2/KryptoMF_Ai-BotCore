@@ -65,8 +65,19 @@ class AdvancedDCAStrategy(StrategyPlugin):
         self.min_profit_percent = self.params.get('min_profit_percent', 0.5) / 100  # Convert to decimal
         self.dca_pool_percent = self.params.get('dca_pool_percent', 100) / 100  # Convert to decimal
         self.max_purchases = self.params.get('max_purchases', -1)  # -1 = unlimited (default)
-        self.price_drop_percent = self.params.get('price_drop_percent', 1.0)
-        
+
+        # Price drop configuration (OPTIONAL - disabled by default)
+        price_drop_config = self.params.get('price_drop', {})
+        if isinstance(price_drop_config, dict):
+            self.use_price_drop = price_drop_config.get('enabled', False)
+            self.price_drop_percent = price_drop_config.get('percent', 1.0)
+            self.price_drop_lookback = price_drop_config.get('lookback_candles', 24)
+        else:
+            # Legacy support: if price_drop_percent is set directly
+            self.price_drop_percent = self.params.get('price_drop_percent', None)
+            self.use_price_drop = self.price_drop_percent is not None
+            self.price_drop_lookback = 24  # Default lookback
+
         # Indicator settings
         self.use_rsi = self.params.get('use_rsi', True)
         self.rsi_oversold = self.params.get('rsi_oversold', 35)
@@ -102,6 +113,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
         logger.info(f"  Min profit: {self.min_profit_percent * 100}%")
         logger.info(f"  DCA pool: {self.dca_pool_percent * 100}% of excess profit")
         logger.info(f"  Max purchases: {'Unlimited' if self.max_purchases == -1 else self.max_purchases}")
+        logger.info(f"  Price drop trigger: {'Disabled' if not self.use_price_drop else f'{self.price_drop_percent}% in {self.price_drop_lookback} candles'}")
         logger.info(f"  Indicators: RSI={self.use_rsi}, StochRSI={self.use_stoch_rsi}, "
                    f"EMA={self.use_ema}, MACD={self.use_macd}, MFI={self.use_mfi}")
     
@@ -157,13 +169,14 @@ class AdvancedDCAStrategy(StrategyPlugin):
         # Evaluate indicators
         buy_signals = []
         reasons = []
-        
-        # Check price drop
-        if TechnicalIndicators.has_price_dropped(df, lookback=24, drop_percent=self.price_drop_percent):
-            buy_signals.append(True)
-            reasons.append(f"Price dropped {self.price_drop_percent}%")
-        else:
-            buy_signals.append(False)
+
+        # Check price drop (OPTIONAL - only if enabled)
+        if self.use_price_drop:
+            if TechnicalIndicators.has_price_dropped(df, lookback=self.price_drop_lookback, drop_percent=self.price_drop_percent):
+                buy_signals.append(True)
+                reasons.append(f"Price dropped {self.price_drop_percent}%")
+            else:
+                buy_signals.append(False)
         
         # RSI oversold
         if self.use_rsi:
