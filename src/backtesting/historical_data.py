@@ -267,14 +267,32 @@ class HistoricalDataFetcher:
         # Timeframe
         print(f"\n{Fore.GREEN}Step 2: Select Timeframe{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Available timeframes:{Style.RESET_ALL}")
-        for tf, info in HistoricalDataFetcher.TIMEFRAMES.items():
-            print(f"  {Fore.CYAN}{tf:<6}{Style.RESET_ALL} - {info['name']}")
-        
-        timeframe = input(f"{Fore.CYAN}Enter timeframe (default: 1h):{Style.RESET_ALL} ").strip().lower() or '1h'
-        
-        if timeframe not in HistoricalDataFetcher.TIMEFRAMES:
-            print(f"{Fore.RED}Invalid timeframe. Using 1h{Style.RESET_ALL}")
-            timeframe = '1h'
+
+        # Create ordered list of timeframes for menu
+        timeframe_options = [
+            ('1m', '1 minute'),
+            ('5m', '5 minutes'),
+            ('15m', '15 minutes'),
+            ('1h', '1 hour'),
+            ('4h', '4 hours'),
+            ('1d', '1 day')
+        ]
+
+        for i, (tf, name) in enumerate(timeframe_options, 1):
+            print(f"  {Fore.CYAN}{i}{Style.RESET_ALL} - {tf:<6} ({name})")
+
+        tf_choice = input(f"{Fore.CYAN}Select timeframe (1-{len(timeframe_options)}, default: 1 for 1m):{Style.RESET_ALL} ").strip() or '1'
+
+        try:
+            tf_index = int(tf_choice) - 1
+            if 0 <= tf_index < len(timeframe_options):
+                timeframe = timeframe_options[tf_index][0]
+            else:
+                print(f"{Fore.RED}Invalid choice. Using 1m{Style.RESET_ALL}")
+                timeframe = '1m'
+        except ValueError:
+            print(f"{Fore.RED}Invalid input. Using 1m{Style.RESET_ALL}")
+            timeframe = '1m'
         
         # Date range
         print(f"\n{Fore.GREEN}Step 3: Select Date Range{Style.RESET_ALL}")
