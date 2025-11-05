@@ -143,9 +143,10 @@ class AdvancedDCAStrategy(StrategyPlugin):
     
     def analyze(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Analyze market and determine if it's time to buy.
+        Analyze market and determine if it's time to buy or sell.
 
-        Uses indicator-based decisions instead of time-based.
+        SELL LOGIC: Simple profit-based - sell when purchase reaches target price (no indicators)
+        BUY LOGIC: Indicator-based decisions (RSI, MACD, MFI, etc.)
 
         Args:
             market_data: Current market data including OHLCV DataFrame
@@ -168,8 +169,36 @@ class AdvancedDCAStrategy(StrategyPlugin):
             logger.info(f"Current price: ${current_price:,.2f}")
             logger.info(f"Active purchases: {len(self.purchases)}")
 
+        # PRIORITY 1: Check if any purchases are ready to sell (profit target reached)
+        # Sell logic is simple - no indicators, just price-based
+        for purchase in self.purchases:
+            sell_price = purchase.get('sell_price', 0)
+            if current_price >= sell_price:
+                amount = purchase.get('amount', 0)
 
-        # Evaluate indicators
+                if not self.is_backtest:
+                    logger.info("=" * 60)
+                    logger.info("ADVANCED DCA SELL SIGNAL")
+                    logger.info("=" * 60)
+                    logger.info(f"  Current price: ${current_price:,.2f}")
+                    logger.info(f"  Sell price: ${sell_price:,.2f}")
+                    logger.info(f"  Amount: {amount:.8f}")
+                    logger.info(f"  Revenue: ${current_price * amount:,.2f}")
+                    logger.info("=" * 60)
+
+                return {
+                    'action': 'sell',
+                    'confidence': 1.0,
+                    'reason': f'Purchase reached profit target (${sell_price:,.2f})',
+                    'metadata': {
+                        'price': current_price,
+                        'amount': amount,
+                        'cost': purchase.get('cost', 0),
+                        'purchase': purchase
+                    }
+                }
+
+        # PRIORITY 2: Evaluate indicators for BUY signal
         buy_signals = []
         reasons = []
 
@@ -248,9 +277,9 @@ class AdvancedDCAStrategy(StrategyPlugin):
 
         # Determine if we should buy (majority of indicators agree)
         positive_signals = sum(buy_signals)
-        print(f"Positive signals: {positive_signals}")
+        # print(f"Positive signals: {positive_signals}")
         total_signals = len(buy_signals)
-        print(f"Total signals: {total_signals}... percentage = {positive_signals / total_signals}")
+        # print(f"Total signals: {total_signals}... percentage = {positive_signals / total_signals}")
 
         if positive_signals >= (total_signals * self.indicator_agreement):
             amount = self.amount_usd / current_price
@@ -353,13 +382,23 @@ class AdvancedDCAStrategy(StrategyPlugin):
         """Handle a filled sell order and apply profit to previous purchase."""
         sale_amount = order.get('cost', 0)  # Total revenue from sale
         fee = order.get('fee', {}).get('cost', 0)
+        sold_amount = order.get('amount', 0)
 
-        # Find and remove the sold purchase (assume FIFO - first in, first out)
+        # Find and remove the sold purchase by matching the amount
         if not self.purchases:
             logger.warning("Sell order filled but no purchases in list!")
             return
 
-        sold_purchase = self.purchases.pop()  # Remove last purchase (most recent)
+        # Find the purchase that matches this sell order (by amount)
+        sold_purchase = None
+        for i, purchase in enumerate(self.purchases):
+            if abs(purchase.get('amount', 0) - sold_amount) < 1e-10:  # Floating point comparison
+                sold_purchase = self.purchases.pop(i)
+                break
+
+        if not sold_purchase:
+            logger.warning(f"Could not find purchase matching sell amount {sold_amount:.8f}")
+            return
 
         # Update sell order status
         if 'sell_order' in sold_purchase:
