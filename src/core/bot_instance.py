@@ -93,6 +93,9 @@ class BotInstance:
         self.last_connectivity_check = 0
         self.connectivity_check_interval = config.get('connectivity_check_interval', 120)
 
+        # Order tracking (to avoid notifying strategy multiple times for same order)
+        self.notified_orders = set()  # Set of order IDs we've already notified strategy about
+
         logger.info(f"[{self.name}] Bot instance created")
         logger.info(f"  ID: {self.bot_id}")
         logger.info(f"  Exchange: {self.exchange_id}")
@@ -424,6 +427,9 @@ class BotInstance:
                     logger.info(f"[{self.name}] ✓ Connectivity restored")
                     self.connectivity_failures = 0
 
+                # Check for filled orders (limit orders that weren't immediately filled)
+                self._check_filled_orders()
+
                 # Run strategy
                 signal = self.strategy.analyze(market_data)
 
@@ -456,7 +462,44 @@ class BotInstance:
                 time.sleep(backoff_time)
         
         logger.info(f"[{self.name}] Trading loop stopped")
-    
+
+    def _check_filled_orders(self):
+        """
+        Check for filled orders and notify strategy.
+
+        This handles limit orders that weren't immediately filled.
+        """
+        try:
+            # Get all open orders
+            open_orders = self.exchange.get_open_orders(self.symbol)
+
+            if not open_orders:
+                return
+
+            # Check each order
+            for order_id in list(open_orders.keys()):
+                # Skip if we've already notified strategy about this order
+                if order_id in self.notified_orders:
+                    continue
+
+                # Fetch order details
+                order = self.exchange.get_order(order_id, self.symbol)
+
+                if order and order.get('status') == 'closed':
+                    logger.info(f"[{self.name}] Order {order_id} filled")
+
+                    # Notify strategy
+                    self.strategy.on_order_filled(order)
+
+                    # Mark as notified
+                    self.notified_orders.add(order_id)
+
+                    # Save state after order fill
+                    self._save_state()
+
+        except Exception as e:
+            logger.error(f"[{self.name}] Error checking filled orders: {e}")
+
     def _execute_buy(self, signal: Dict[str, Any]):
         """Execute buy order."""
         metadata = signal.get('metadata', {})
@@ -483,6 +526,9 @@ class BotInstance:
             # Notify strategy
             if order.get('status') == 'closed':
                 self.strategy.on_order_filled(order)
+
+                # Mark as notified
+                self.notified_orders.add(order.get('id'))
 
                 # Save state immediately after purchase
                 self._save_state()
@@ -521,6 +567,9 @@ class BotInstance:
             # Notify strategy
             if order.get('status') == 'closed':
                 self.strategy.on_order_filled(order)
+
+                # Mark as notified
+                self.notified_orders.add(order.get('id'))
 
                 # Save state immediately after sell
                 self._save_state()

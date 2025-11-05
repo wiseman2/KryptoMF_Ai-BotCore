@@ -99,6 +99,9 @@ class AdvancedDCAStrategy(StrategyPlugin):
         self.step_down_multiplier = self.params.get('step_down_multiplier', 1.5)
         self.max_step_down = self.params.get('max_step_down', 5.0)
 
+        # Indicator agreement threshold (percentage of indicators that must agree)
+        self.indicator_agreement = self.params.get('indicator_agreement', 0.6)  # Default 60%
+
         # State - list of active purchases
         self.purchases = []  # List of purchase dicts with cost, amount, sell_price, dca_applied
         self.total_profit = 0.0
@@ -141,18 +144,18 @@ class AdvancedDCAStrategy(StrategyPlugin):
     def analyze(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Analyze market and determine if it's time to buy.
-        
+
         Uses indicator-based decisions instead of time-based.
-        
+
         Args:
             market_data: Current market data including OHLCV DataFrame
-            
+
         Returns:
             Signal dictionary
         """
         current_price = market_data.get('last')
         df = market_data.get('ohlcv')  # Pandas DataFrame with OHLCV data
-        
+
         if not current_price or df is None or len(df) < 50:
             return {
                 'action': 'hold',
@@ -164,8 +167,8 @@ class AdvancedDCAStrategy(StrategyPlugin):
         if not self.is_backtest:
             logger.info(f"Current price: ${current_price:,.2f}")
             logger.info(f"Active purchases: {len(self.purchases)}")
-       
-        
+
+
         # Evaluate indicators
         buy_signals = []
         reasons = []
@@ -249,7 +252,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
         total_signals = len(buy_signals)
         print(f"Total signals: {total_signals}... percentage = {positive_signals / total_signals}")
 
-        if positive_signals >= (total_signals * 0.6):  # 40% of indicators must agree
+        if positive_signals >= (total_signals * self.indicator_agreement):
             amount = self.amount_usd / current_price
 
 

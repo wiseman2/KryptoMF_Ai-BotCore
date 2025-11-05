@@ -157,10 +157,17 @@ class _DeprecatedBotEngine:
                 else:
                     logger.info(f"Signal: {signal['reason']}")
 
-                # Check open orders
+                # Check open orders and notify strategy of filled orders
                 open_orders = self.exchange.get_open_orders(self.symbol)
                 if open_orders:
                     logger.info(f"Open orders: {len(open_orders)}")
+
+                    # Check each order to see if it's been filled
+                    for order_id in list(open_orders.keys()):
+                        order = self.exchange.get_order(order_id, self.symbol)
+                        if order and order.get('status') == 'closed':
+                            logger.info(f"Order {order_id} filled")
+                            self.strategy.on_order_filled(order)
 
                 # Sleep until next iteration
                 logger.info(f"Next check in {check_interval} seconds...")

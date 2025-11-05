@@ -289,7 +289,7 @@ class BacktestEngine:
     def _execute_buy(self, signal: Dict[str, Any], market_data: Dict[str, Any]):
         """
         Execute simulated buy order.
-        
+
         Args:
             signal: Buy signal from strategy
             market_data: Current market data
@@ -297,10 +297,10 @@ class BacktestEngine:
         metadata = signal.get('metadata', {})
         price = metadata.get('price', market_data['close'])
         amount = metadata.get('amount', 0)
-        
+
         if amount <= 0:
             return
-        
+
         # Calculate cost
         cost = amount * price
 
@@ -308,12 +308,12 @@ class BacktestEngine:
         if cost > self.balance:
             logger.debug(f"Insufficient balance for buy: ${cost:.2f} > ${self.balance:.2f}")
             return
-        
+
         # Execute buy
         self.balance -= cost
         self.position += amount
         self.position_cost += cost
-        
+
         # Record trade
         trade = {
             'timestamp': market_data['timestamp'],
@@ -325,8 +325,23 @@ class BacktestEngine:
             'position': self.position
         }
         self.trades.append(trade)
-        
+
         logger.debug(f"BUY: {amount:.8f} @ ${price:.2f} = ${cost:.2f}")
+
+        # Notify strategy that order was filled
+        order = {
+            'id': f"backtest_buy_{len(self.trades)}",
+            'symbol': self.symbol,
+            'side': 'buy',
+            'price': price,
+            'amount': amount,
+            'filled': amount,
+            'cost': cost,
+            'fee': {'cost': 0, 'currency': 'USD'},  # No fees in backtest for simplicity
+            'status': 'closed',
+            'timestamp': market_data['timestamp']
+        }
+        self.strategy.on_order_filled(order)
     
     def _execute_sell(self, signal: Dict[str, Any], market_data: Dict[str, Any]):
         """
@@ -372,8 +387,23 @@ class BacktestEngine:
             'position': self.position
         }
         self.trades.append(trade)
-        
+
         logger.debug(f"SELL: {amount:.8f} @ ${price:.2f} = ${proceeds:.2f} (P&L: ${profit:.2f})")
+
+        # Notify strategy that order was filled
+        order = {
+            'id': f"backtest_sell_{len(self.trades)}",
+            'symbol': self.symbol,
+            'side': 'sell',
+            'price': price,
+            'amount': amount,
+            'filled': amount,
+            'cost': proceeds,
+            'fee': {'cost': 0, 'currency': 'USD'},  # No fees in backtest for simplicity
+            'status': 'closed',
+            'timestamp': market_data['timestamp']
+        }
+        self.strategy.on_order_filled(order)
     
     def _calculate_results(self) -> Dict[str, Any]:
         """
