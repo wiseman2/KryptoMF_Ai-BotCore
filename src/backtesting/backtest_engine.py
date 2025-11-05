@@ -368,12 +368,21 @@ class BacktestEngine:
         # Execute sell
         proceeds = amount * price
         self.balance += proceeds
-        
+
         # Calculate profit for this portion
-        avg_cost = self.position_cost / self.position if self.position > 0 else 0
-        cost_of_sold = amount * avg_cost
+        # If strategy provides the actual cost of this specific purchase, use it
+        # Otherwise fall back to average cost calculation
+        purchase_cost = metadata.get('cost', None)
+        if purchase_cost is not None:
+            # Use the actual cost of the specific purchase being sold
+            cost_of_sold = purchase_cost
+        else:
+            # Fall back to average cost calculation
+            avg_cost = self.position_cost / self.position if self.position > 0 else 0
+            cost_of_sold = amount * avg_cost
+
         profit = proceeds - cost_of_sold
-        
+
         self.position -= amount
         self.position_cost -= cost_of_sold
         
