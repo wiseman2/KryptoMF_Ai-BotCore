@@ -90,11 +90,13 @@ Detailed guide on trading economics:
 
 ### [Backtesting Guide](BACKTESTING.md)
 How to test strategies with historical data:
-- Setting up backtests
-- Fetching historical data
+- Interactive setup with guided prompts
+- Configurable parameters (balance, amount, profit %)
+- Real-time progress with active trade metrics
+- Fetching and caching historical data
 - Running backtest simulations
-- Analyzing results
-- Interpreting performance metrics
+- Analyzing results and performance metrics
+- Session logging for review and sharing
 - Data caching and management
 
 ### [Strategy Enhancements](STRATEGY_ENHANCEMENTS.md)

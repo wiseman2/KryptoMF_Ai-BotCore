@@ -246,8 +246,11 @@ class ConfigManager:
 
         elif config.get('strategy') == 'dca':
             params = config.get('strategy_params', {})
-            if 'interval_hours' not in params and 'use_indicators' not in params:
-                errors.append("DCA requires either 'interval_hours' or 'use_indicators' parameter")
+            # Accept interval_hours, min_interval_hours, use_indicators, or indicators
+            has_timing = ('interval_hours' in params or 'min_interval_hours' in params or
+                         'use_indicators' in params or 'indicators' in params)
+            if not has_timing:
+                errors.append("DCA requires either 'interval_hours', 'min_interval_hours', 'use_indicators', or 'indicators' parameter")
 
         # Trading fees validation
         if 'fees' in config:

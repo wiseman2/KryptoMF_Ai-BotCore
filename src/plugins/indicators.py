@@ -270,49 +270,101 @@ class TechnicalIndicators:
     @staticmethod
     def has_price_dropped(df: pd.DataFrame, lookback: int = 24, drop_percent: float = 1.0) -> bool:
         """
-        Check if price has dropped by a certain percentage over lookback period.
-        
+        Check if price has dropped by a certain percentage at any point in the lookback period.
+
+        Loops through all values from -2 to -lookback and checks if current price is lower
+        than any of those past prices by the required percentage.
+
         Args:
             df: OHLCV DataFrame
             lookback: Number of candles to look back (default: 24)
             drop_percent: Minimum drop percentage (default: 1.0%)
-            
+
         Returns:
-            True if price has dropped by drop_percent or more
+            True if price has dropped by drop_percent or more from any point in lookback period
         """
-        if len(df) < lookback:
+        if len(df) < lookback + 1:
             return False
-        
+
         current_price = df['close'].values[-1]
-        past_price = df['close'].values[-lookback]
-        
-        percent_change = ((current_price - past_price) / past_price) * 100
-        
-        return percent_change <= -drop_percent
+
+        # Check each price from -2 to -lookback
+        for i in range(2, lookback + 1):
+            past_price = df['close'].values[-i]
+            # Calculate drop: (past_price - current_price) / past_price * 100
+            drop = abs((past_price - current_price) / past_price) * 100
+
+            # If current price is lower and drop meets threshold, return True
+            if current_price < past_price and drop >= drop_percent:
+                return True
+
+        return False
     
     @staticmethod
-    def is_price_rising(df: pd.DataFrame, lookback: int = 3) -> bool:
+    def is_price_rising(df: pd.DataFrame, lookback: int = 3, rise_percent: float = 0.5) -> bool:
         """
-        Check if price is rising over recent candles.
+        Check if price has risen by a certain percentage at any point in the lookback period.
+
+        Loops through all values from -2 to -lookback and checks if current price is higher
+        than any of those past prices by the required percentage.
 
         Args:
             df: OHLCV DataFrame
             lookback: Number of candles to check (default: 3)
+            rise_percent: Minimum rise percentage (default: 0.5%)
 
         Returns:
-            True if price is rising
+            True if price has risen by rise_percent or more from any point in lookback period
         """
-        if len(df) < lookback:
+        if len(df) < lookback + 1:
             return False
 
-        prices = df['close'].values[-lookback:]
+        current_price = df['close'].values[-1]
 
-        # Check if each price is higher than the previous
-        for i in range(1, len(prices)):
-            if prices[i] <= prices[i-1]:
-                return False
+        # Check each price from -2 to -lookback
+        for i in range(2, lookback + 1):
+            past_price = df['close'].values[-i]
+            # Calculate rise: (current_price - past_price) / past_price * 100
+            rise = abs((current_price - past_price) / past_price) * 100
 
-        return True
+            # If current price is higher and rise meets threshold, return True
+            if current_price > past_price and rise >= rise_percent:
+                return True
+
+        return False
+
+    @staticmethod
+    def is_price_falling(df: pd.DataFrame, lookback: int = 3, fall_percent: float = 0.5) -> bool:
+        """
+        Check if price has fallen by a certain percentage at any point in the lookback period.
+
+        Loops through all values from -2 to -lookback and checks if current price is lower
+        than any of those past prices by the required percentage.
+
+        Args:
+            df: OHLCV DataFrame
+            lookback: Number of candles to check (default: 3)
+            fall_percent: Minimum fall percentage (default: 0.5%)
+
+        Returns:
+            True if price has fallen by fall_percent or more from any point in lookback period
+        """
+        if len(df) < lookback + 1:
+            return False
+
+        current_price = df['close'].values[-1]
+
+        # Check each price from -2 to -lookback
+        for i in range(2, lookback + 1):
+            past_price = df['close'].values[-i]
+            # Calculate fall: (past_price - current_price) / past_price * 100
+            fall = abs((past_price - current_price) / past_price) * 100
+
+            # If current price is lower and fall meets threshold, return True
+            if current_price < past_price and fall >= fall_percent:
+                return True
+
+        return False
 
     @staticmethod
     def calculate_sell_price_with_fees(

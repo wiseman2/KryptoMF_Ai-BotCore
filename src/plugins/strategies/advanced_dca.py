@@ -49,6 +49,10 @@ class AdvancedDCAStrategy(StrategyPlugin):
     - use_macd: Use MACD indicator (default: True)
     - use_mfi: Use MFI indicator (default: True)
     - mfi_oversold: MFI oversold level (default: 25)
+    - step_down_multiplier: Multiplier for each additional purchase (default: 1.5)
+    - max_step_down: Maximum step-down percentage per purchase (default: 5.0)
+
+    Note: Base step-down is automatically set to min(profit_target, 5%)
     """
     
     def __init__(self, config: Dict[str, Any]):
@@ -88,7 +92,13 @@ class AdvancedDCAStrategy(StrategyPlugin):
         self.use_macd = self.params.get('use_macd', True)
         self.use_mfi = self.params.get('use_mfi', True)
         self.mfi_oversold = self.params.get('mfi_oversold', 25)
-        
+
+        # Progressive step-down settings (based on profit target)
+        # Base step-down is the smaller of profit target or 5%
+        self.base_step_down = min(self.min_profit_percent * 100, 5.0)
+        self.step_down_multiplier = self.params.get('step_down_multiplier', 1.5)
+        self.max_step_down = self.params.get('max_step_down', 5.0)
+
         # State - list of active purchases
         self.purchases = []  # List of purchase dicts with cost, amount, sell_price, dca_applied
         self.total_profit = 0.0
@@ -113,6 +123,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
         logger.info(f"  Min profit: {self.min_profit_percent * 100}%")
         logger.info(f"  DCA pool: {self.dca_pool_percent * 100}% of excess profit")
         logger.info(f"  Max purchases: {'Unlimited' if self.max_purchases == -1 else self.max_purchases}")
+        logger.info(f"  Progressive step-down: Base={self.base_step_down}%, Multiplier={self.step_down_multiplier}x, Max={self.max_step_down}%")
         logger.info(f"  Price drop trigger: {'Disabled' if not self.use_price_drop else f'{self.price_drop_percent}% in {self.price_drop_lookback} candles'}")
         logger.info(f"  Indicators: RSI={self.use_rsi}, StochRSI={self.use_stoch_rsi}, "
                    f"EMA={self.use_ema}, MACD={self.use_macd}, MFI={self.use_mfi}")
@@ -153,18 +164,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
         if not self.is_backtest:
             logger.info(f"Current price: ${current_price:,.2f}")
             logger.info(f"Active purchases: {len(self.purchases)}")
-
-        # Check if we've reached max purchases (only if max_purchases is not -1)
-        if self.max_purchases != -1 and len(self.purchases) >= self.max_purchases:
-            return {
-                'action': 'hold',
-                'confidence': 1.0,
-                'reason': f'Max purchases ({self.max_purchases}) reached',
-                'metadata': {
-                    'active_purchases': len(self.purchases),
-                    'current_price': current_price
-                }
-            }
+       
         
         # Evaluate indicators
         buy_signals = []
@@ -222,12 +222,36 @@ class AdvancedDCAStrategy(StrategyPlugin):
             else:
                 buy_signals.append(False)
         
+        # Check if price is low enough compared to last purchase (progressive step-down)
+        if len(self.purchases) > 0:
+            last_purchase_price = self.purchases[-1]['price']
+
+            # Calculate required step-down for this purchase
+            # Each purchase requires progressively larger drop
+            purchase_number = len(self.purchases) + 1  # Next purchase number
+            required_step = self.base_step_down * (self.step_down_multiplier ** (purchase_number - 2))
+            required_step = min(required_step, self.max_step_down)  # Cap at max
+
+            price_drop_from_last = ((last_purchase_price - current_price) / last_purchase_price) * 100
+
+            if price_drop_from_last < required_step:
+                if not self.is_backtest:
+                    logger.info(f"Price not low enough: {price_drop_from_last:.2f}% drop (need {required_step:.2f}%)")
+                return {
+                    'action': 'hold',
+                    'confidence': 0.0,
+                    'reason': f'Price needs to drop {required_step:.2f}% from last purchase (currently {price_drop_from_last:.2f}%)'
+                }
+
         # Determine if we should buy (majority of indicators agree)
         positive_signals = sum(buy_signals)
+        print(f"Positive signals: {positive_signals}")
         total_signals = len(buy_signals)
-        
-        if positive_signals >= (total_signals * 0.6):  # 60% of indicators must agree
+        print(f"Total signals: {total_signals}... percentage = {positive_signals / total_signals}")
+
+        if positive_signals >= (total_signals * 0.6):  # 40% of indicators must agree
             amount = self.amount_usd / current_price
+
 
             # Only show detailed logging in live/paper trading, not backtest
             if not self.is_backtest:

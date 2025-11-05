@@ -29,6 +29,7 @@ The **KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency t
 ### Advanced Trading Strategies
 - ✅ **Enhanced Grid Trading** - Indicator-validated grid orders (no blind buying)
 - ✅ **Advanced DCA** - Profit application from subsequent sales to reduce cost basis
+- ✅ **Progressive Step-Down** - Each purchase requires progressively lower price (prevents clustering)
 - ✅ **Enhanced DCA** - Indicator-based buying instead of time-based intervals
 - ✅ **Trailing Orders** - Exchange-native trailing orders (Binance/Binance.US)
 - ✅ **Technical Indicators** - RSI, MACD, EMA, Stochastic RSI, MFI, and more
@@ -57,10 +58,22 @@ The **KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency t
 - ✅ **Data Size Estimation** - Shows expected candles and MB before downloading
 - ✅ **Local Caching** - Caches downloaded data to avoid re-downloading
 - ✅ **Multiple Timeframes** - 1m, 5m, 15m, 1h, 4h, 1d support
+- ✅ **Configurable Parameters** - Set initial balance, amount per trade, profit % for each backtest
+- ✅ **Real-Time Metrics** - Shows cash, active trades, invested amount, unrealized P/L during backtest
 - ✅ **Performance Metrics** - Win rate, profit factor, max drawdown, equity curve
 - ✅ **Trade Analysis** - Detailed trade log with P&L for each trade
 - ✅ **Visual Results** - ASCII equity curve and colored performance summary
 - ✅ **Export Results** - Save backtest results to JSON for further analysis
+- ✅ **Session Logging** - Every backtest saved to dedicated log file for review and sharing
+
+### Logging & Monitoring
+- ✅ **Session-Specific Logs** - Dedicated log file for each trading session (backtest/paper/live)
+- ✅ **Dual Output** - Console (colored) + file (detailed with DEBUG level)
+- ✅ **Automatic Rotation** - 10MB max per file, keeps 10 backups (100MB total history)
+- ✅ **Organized Structure** - Separate folders for backtest/paper/live logs
+- ✅ **Timestamped Files** - Easy to find specific sessions: `backtest_20251104_162530_BTC-USDT_advanced_dca.log`
+- ✅ **Shareable Results** - Share log files to prove strategy performance
+- ✅ **Debug Support** - Full DEBUG logging to files for troubleshooting
 
 ## 🚀 Quick Start
 
@@ -258,10 +271,11 @@ python cli.py --config config/bot_config.yaml --backtest
 ```
 
 You'll be prompted to select:
-1. **Trading Pair** - BTC/USD, ETH/USD, etc.
-2. **Timeframe** - 1m, 5m, 15m, 1h, 4h, 1d
+1. **Trading Pair** - BTC/USDT (default), BTC/USD, ETH/USD, etc.
+2. **Timeframe** - 1m, 5m, 15m, 1h (default), 4h, 1d
 3. **Date Range** - Quick options (1 month, 3 months, 6 months, 1 year) or custom dates
-4. **Data Size Estimate** - Shows expected candles and download size in MB
+4. **Backtest Parameters** - Initial balance, amount per trade, min profit % (uses config defaults)
+5. **Data Size Estimate** - Shows expected candles and download size in MB
 
 The bot will automatically:
 - ✅ Download historical data from your configured exchange
@@ -278,7 +292,7 @@ The bot will automatically:
 
 Step 1: Select Trading Pair
 Examples: BTC/USD, ETH/USD, BTC/USDT, ETH/BTC
-Enter trading pair: BTC/USD
+Enter trading pair (default: BTC/USDT): BTC/USD
 
 Step 2: Select Timeframe
 Available timeframes:
@@ -335,11 +349,19 @@ timestamp,open,high,low,close,volume
 ### Backtest Results
 
 The backtest engine provides:
+- **Real-Time Progress** - Shows cash, active trades, invested amount, unrealized P/L every 1000 candles
 - **Performance Summary** - Total return, win rate, max drawdown
-- **Trade Statistics** - Winning/losing trades, average profit/loss, profit factor
+- **Trade Statistics** - Winning/losing trades, average profit/loss, buy/sell counts
 - **Trade Log** - Detailed log of all trades with timestamps and P&L
 - **Equity Curve** - ASCII visualization of account equity over time
 - **JSON Export** - Save results for further analysis
+- **Session Log File** - Complete backtest log saved to `logs/backtest/` for review and sharing
+
+**Example Progress Output:**
+```
+[2025-11-04 16:25:35] INFO - Progress: 1.3% (1000/74233 candles) | Cash: $90.00 | Active Trades: 1 | Invested: $10.00 | Unrealized P/L: +$0.50 | Total P/L: +$0.50 (+0.50%)
+[2025-11-04 16:25:40] INFO - Progress: 2.7% (2000/74233 candles) | Cash: $70.00 | Active Trades: 3 | Invested: $30.00 | Unrealized P/L: +$2.15 | Total P/L: +$2.15 (+2.15%)
+```
 
 ### Data Caching
 
@@ -351,9 +373,9 @@ Downloaded data is automatically cached in `data/historical/` to avoid re-downlo
 ### Key Features Documentation
 
 #### Advanced DCA Strategy
-The advanced DCA strategy applies profit from subsequent sales to reduce the cost basis of previous purchases, making them easier to sell at profit. See [STRATEGY_ENHANCEMENTS.md](docs/STRATEGY_ENHANCEMENTS.md#1-advanced-dca-strategy-advanced_dcapy) for details.
+The advanced DCA strategy applies profit from subsequent sales to reduce the cost basis of previous purchases, making them easier to sell at profit. It also includes **progressive step-down** logic to prevent buying at similar price levels. See [STRATEGY_ENHANCEMENTS.md](docs/STRATEGY_ENHANCEMENTS.md#1-advanced-dca-strategy-advanced_dcapy) for details.
 
-**Example:**
+**Profit Application Example:**
 ```
 Buy #1: 1 BTC @ $50,000
 Buy #2: 1 BTC @ $48,000
@@ -362,6 +384,19 @@ Sell #2: 1 BTC @ $49,000 (profit: $1,000)
 After applying profit to Buy #1:
 Buy #1 new cost: $49,240 (reduced from $50,000)
 ```
+
+**Progressive Step-Down Example (0.5% profit target):**
+```
+Purchase 1: $50,000 (no requirement)
+Purchase 2: $49,750 or lower (0.5% drop required)
+Purchase 3: $49,377 or lower (0.75% drop from #2)
+Purchase 4: $48,823 or lower (1.125% drop from #3)
+Purchase 5: $48,000 or lower (1.6875% drop from #4)
+...
+Purchase 10: ~$42,500 or lower (covers ~15% range)
+```
+
+This prevents buying multiple times at similar prices and ensures you're dollar-cost averaging across a meaningful price range.
 
 #### Enhanced DCA with Indicators
 Instead of time-based buying, the enhanced DCA uses technical indicators (RSI, MACD, EMA, etc.) to identify optimal entry points. See [STRATEGY_ENHANCEMENTS.md](docs/STRATEGY_ENHANCEMENTS.md#2-enhanced-dca-strategy-dcapy) for configuration.
