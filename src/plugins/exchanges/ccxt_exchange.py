@@ -55,6 +55,10 @@ class CCXTExchange(ExchangePlugin):
         self.min_request_rate = 0.1  # Minimum delay
         self.max_request_rate = 1.5  # Maximum delay
 
+        # Paper trading order tracking
+        self.paper_orders = {}  # {order_id: order_dict} - all orders
+        self.paper_open_orders = {}  # {order_id: order_dict} - only open orders
+
         logger.info(f"Initializing {self.exchange_id} connector")
     
     def connect(self):
@@ -204,18 +208,30 @@ class CCXTExchange(ExchangePlugin):
         if params is None:
             params = {}
         if self.paper_trading:
+            import time
             logger.warning(f"⚠️  PAPER TRADING - Would place {side} {order_type} order: "
                           f"{amount} {symbol} @ {price}")
-            return {
-                'id': 'paper_' + str(hash(f"{symbol}{side}{amount}{price}")),
+
+            order_id = 'paper_' + str(hash(f"{symbol}{side}{amount}{price}{time.time()}"))
+            order = {
+                'id': order_id,
                 'symbol': symbol,
                 'side': side,
                 'type': order_type,
                 'amount': amount,
                 'price': price,
-                'status': 'closed',
-                'filled': amount
+                'cost': amount * price,
+                'status': 'closed',  # Limit orders fill immediately in paper trading
+                'filled': amount,
+                'fee': {'cost': 0, 'currency': 'USD'},
+                'timestamp': int(time.time() * 1000)
             }
+
+            # Track the order
+            self.paper_orders[order_id] = order
+            # Don't add to open orders since it's immediately filled
+
+            return order
         
         logger.info(f"Placing {side} {order_type} order: {amount} {symbol} @ {price}")
         if params:
@@ -267,30 +283,37 @@ class CCXTExchange(ExchangePlugin):
     def get_order(self, order_id: str, symbol: str) -> Dict[str, Any]:
         """
         Get order details.
-        
+
         Args:
             order_id: Order ID
             symbol: Trading pair
-            
+
         Returns:
             Order details
         """
+        if self.paper_trading:
+            return self.paper_orders.get(order_id, None)
+
         logger.debug(f"Fetching order {order_id}")
         return self.exchange.fetch_order(order_id, symbol)
     
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Get open orders.
-        
+
         Args:
             symbol: Trading pair (None for all pairs)
-            
+
         Returns:
             List of open orders
         """
         if self.paper_trading:
-            return []
-        
+            # Return open orders for the specified symbol
+            if symbol:
+                return [order for order in self.paper_open_orders.values()
+                       if order.get('symbol') == symbol]
+            return list(self.paper_open_orders.values())
+
         logger.debug(f"Fetching open orders for {symbol or 'all symbols'}")
         return self.exchange.fetch_open_orders(symbol)
     
@@ -508,16 +531,34 @@ class CCXTExchange(ExchangePlugin):
             logger.info(f"  Order type: {order_type_to_use}")
 
             if self.paper_trading:
+                import time
                 logger.warning(f"⚠️  PAPER TRADING - Would place trailing {side} order")
-                return {
-                    'id': 'paper_trailing_' + str(hash(f"{symbol}{side}{amount}{trailing_percent}")),
+
+                # Get current market price
+                ticker = self.exchange.fetch_ticker(symbol)
+                current_price = ticker.get('last', price or 0)
+
+                order_id = 'paper_trailing_' + str(hash(f"{symbol}{side}{amount}{trailing_percent}{time.time()}"))
+                order = {
+                    'id': order_id,
                     'symbol': symbol,
                     'side': side,
                     'type': order_type_to_use,
                     'amount': amount,
-                    'status': 'open',
+                    'price': current_price,  # Use current market price
+                    'cost': amount * current_price,
+                    'status': 'closed',  # Simulate immediate fill for paper trading
+                    'filled': amount,
+                    'fee': {'cost': 0, 'currency': 'USD'},
+                    'timestamp': int(time.time() * 1000),
                     'info': {'trailingPercent': trailing_percent}
                 }
+
+                # Track the order
+                self.paper_orders[order_id] = order
+                # Don't add to open orders since it's immediately filled
+
+                return order
 
             try:
                 order = self.exchange.create_order(
