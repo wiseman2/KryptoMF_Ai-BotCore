@@ -106,6 +106,8 @@ class AdvancedDCAStrategy(StrategyPlugin):
         self.purchases = []  # List of purchase dicts with cost, amount, sell_price, dca_applied
         self.total_profit = 0.0
         self.total_dca_applied = 0.0
+        self.winning_trades = 0
+        self.losing_trades = 0
         self.bot = None
 
         # Backtest mode flag (reduces logging noise)
@@ -429,6 +431,12 @@ class AdvancedDCAStrategy(StrategyPlugin):
 
         self.total_profit += total_profit
 
+        # Track win/loss
+        if total_profit > 0:
+            self.winning_trades += 1
+        else:
+            self.losing_trades += 1
+
         # Apply DCA to previous purchase if exists
         if dca_to_add > 0 and len(self.purchases) > 0:
             self._apply_dca_to_previous(dca_to_add)
@@ -482,6 +490,8 @@ class AdvancedDCAStrategy(StrategyPlugin):
             'purchases': self.purchases,
             'total_profit': self.total_profit,
             'total_dca_applied': self.total_dca_applied,
+            'winning_trades': self.winning_trades,
+            'losing_trades': self.losing_trades,
             'trailing_state': self.trailing_state
         }
 
@@ -495,6 +505,8 @@ class AdvancedDCAStrategy(StrategyPlugin):
         self.purchases = state.get('purchases', [])
         self.total_profit = state.get('total_profit', 0.0)
         self.total_dca_applied = state.get('total_dca_applied', 0.0)
+        self.winning_trades = state.get('winning_trades', 0)
+        self.losing_trades = state.get('losing_trades', 0)
 
         # Restore trailing state
         if 'trailing_state' in state:
@@ -505,6 +517,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
 
         logger.info(f"State restored: {len(self.purchases)} active purchases, "
                    f"${self.total_profit:,.2f} total profit, "
+                   f"{self.winning_trades}W/{self.losing_trades}L, "
                    f"${self.total_dca_applied:,.2f} total DCA applied")
 
     def start_trailing(self, direction: str, activation_price: float, trailing_percent: float):

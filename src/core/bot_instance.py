@@ -494,11 +494,31 @@ class BotInstance:
                     # Mark as notified
                     self.notified_orders.add(order_id)
 
+                    # Update profit stats if it was a sell order
+                    if order.get('side') == 'sell':
+                        self._update_profit_stats()
+
                     # Save state after order fill
                     self._save_state()
 
         except Exception as e:
             logger.error(f"[{self.name}] Error checking filled orders: {e}")
+
+    def _update_profit_stats(self):
+        """Update profit statistics from strategy."""
+        try:
+            # Get profit from strategy if available
+            if hasattr(self.strategy, 'total_profit'):
+                self.stats['total_profit'] = self.strategy.total_profit
+
+            # Get win/loss counts if available
+            if hasattr(self.strategy, 'winning_trades'):
+                self.stats['winning_trades'] = self.strategy.winning_trades
+            if hasattr(self.strategy, 'losing_trades'):
+                self.stats['losing_trades'] = self.strategy.losing_trades
+
+        except Exception as e:
+            logger.error(f"[{self.name}] Error updating profit stats: {e}")
 
     def _execute_buy(self, signal: Dict[str, Any]):
         """Execute buy order."""
@@ -546,10 +566,10 @@ class BotInstance:
         metadata = signal.get('metadata', {})
         price = metadata.get('price')
         amount = metadata.get('amount')
-        
+
         if not price or not amount:
             return
-        
+
         try:
             order = self.exchange.place_order(
                 symbol=self.symbol,
@@ -558,9 +578,9 @@ class BotInstance:
                 price=price,
                 order_type='limit'
             )
-            
+
             logger.info(f"[{self.name}] ✓ Sell order: {order.get('id')}")
-            
+
             # Update stats
             self.stats['total_trades'] += 1
 
@@ -570,6 +590,9 @@ class BotInstance:
 
                 # Mark as notified
                 self.notified_orders.add(order.get('id'))
+
+                # Update profit stats from strategy
+                self._update_profit_stats()
 
                 # Save state immediately after sell
                 self._save_state()
