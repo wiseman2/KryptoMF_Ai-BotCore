@@ -340,25 +340,65 @@ class ConfigManager:
             print()
             print(f"{Fore.GREEN}Step 3: API Credentials{Style.RESET_ALL}")
             print("-" * 70)
-            print(f"{Fore.YELLOW}⚠️  SECURITY BEST PRACTICES:{Style.RESET_ALL}")
-            print("  • Your API keys will be stored securely in your OS keychain")
-            print("  • Enable TRADING permissions on your API keys")
-            print("  • DISABLE WITHDRAWAL permissions (important!)")
-            print("  • Enable IP whitelisting if possible")
-            print()
 
-            api_key = input(f"{Fore.YELLOW}Enter API key:{Style.RESET_ALL} ").strip()
-            api_secret = input(f"{Fore.YELLOW}Enter API secret:{Style.RESET_ALL} ").strip()
+            # Check if credentials already exist for this exchange
+            from security.secret_provider import get_secret_provider
+            secret_provider = get_secret_provider()
+            existing_creds = secret_provider.get_key(config['exchange'])
 
-            config['api_key'] = api_key
-            config['api_secret'] = api_secret
-
-            # Passphrase for exchanges that require it
-            if config['exchange'] in EXCHANGES_WITH_PASSPHRASE:
+            if existing_creds:
+                print(f"{Fore.GREEN}✓ Found existing API credentials for {config['exchange']}{Style.RESET_ALL}")
                 print()
-                print(f"{Fore.YELLOW}This exchange requires an API passphrase.{Style.RESET_ALL}")
-                passphrase = input(f"{Fore.YELLOW}Enter API passphrase:{Style.RESET_ALL} ").strip()
-                config['passphrase'] = passphrase
+                update_creds = input(f"{Fore.YELLOW}Do you want to update/replace these credentials? (y/n, default: n):{Style.RESET_ALL} ").strip().lower()
+
+                if update_creds != 'y':
+                    print(f"{Fore.GREEN}✓ Using existing credentials from keychain{Style.RESET_ALL}")
+                    # Don't add credentials to config - they'll be loaded from keychain
+                else:
+                    # User wants to update credentials
+                    print()
+                    print(f"{Fore.YELLOW}⚠️  SECURITY BEST PRACTICES:{Style.RESET_ALL}")
+                    print("  • Your API keys will be stored securely in your OS keychain")
+                    print("  • Enable TRADING permissions on your API keys")
+                    print("  • DISABLE WITHDRAWAL permissions (important!)")
+                    print("  • Enable IP whitelisting if possible")
+                    print()
+
+                    api_key = input(f"{Fore.YELLOW}Enter API key:{Style.RESET_ALL} ").strip()
+                    api_secret = input(f"{Fore.YELLOW}Enter API secret:{Style.RESET_ALL} ").strip()
+
+                    config['api_key'] = api_key
+                    config['api_secret'] = api_secret
+
+                    # Passphrase for exchanges that require it
+                    if config['exchange'] in EXCHANGES_WITH_PASSPHRASE:
+                        print()
+                        print(f"{Fore.YELLOW}This exchange requires an API passphrase.{Style.RESET_ALL}")
+                        passphrase = input(f"{Fore.YELLOW}Enter API passphrase:{Style.RESET_ALL} ").strip()
+                        config['passphrase'] = passphrase
+            else:
+                # No existing credentials - prompt for new ones
+                print(f"{Fore.YELLOW}No existing credentials found for {config['exchange']}{Style.RESET_ALL}")
+                print()
+                print(f"{Fore.YELLOW}⚠️  SECURITY BEST PRACTICES:{Style.RESET_ALL}")
+                print("  • Your API keys will be stored securely in your OS keychain")
+                print("  • Enable TRADING permissions on your API keys")
+                print("  • DISABLE WITHDRAWAL permissions (important!)")
+                print("  • Enable IP whitelisting if possible")
+                print()
+
+                api_key = input(f"{Fore.YELLOW}Enter API key:{Style.RESET_ALL} ").strip()
+                api_secret = input(f"{Fore.YELLOW}Enter API secret:{Style.RESET_ALL} ").strip()
+
+                config['api_key'] = api_key
+                config['api_secret'] = api_secret
+
+                # Passphrase for exchanges that require it
+                if config['exchange'] in EXCHANGES_WITH_PASSPHRASE:
+                    print()
+                    print(f"{Fore.YELLOW}This exchange requires an API passphrase.{Style.RESET_ALL}")
+                    passphrase = input(f"{Fore.YELLOW}Enter API passphrase:{Style.RESET_ALL} ").strip()
+                    config['passphrase'] = passphrase
         else:
             print()
             print(f"{Fore.YELLOW}ℹ️  Skipping API credentials (not needed for paper trading){Style.RESET_ALL}")

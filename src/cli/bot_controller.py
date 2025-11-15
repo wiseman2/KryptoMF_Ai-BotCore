@@ -278,14 +278,14 @@ class StatusUpdateLoop:
 def run_interactive_mode(bot_instance, status_display):
     """
     Run bot in interactive mode with status display and keyboard controls.
-    
+
     Args:
         bot_instance: BotInstance to run
         status_display: StatusDisplay for output
     """
     # Create controller and status updater
     controller = BotController(bot_instance, status_display)
-    status_updater = StatusUpdateLoop(bot_instance, status_display, update_interval=5)
+    status_updater = StatusUpdateLoop(bot_instance, status_display, update_interval=30)
     
     try:
         # Start controller and status updater
