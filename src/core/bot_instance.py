@@ -118,8 +118,14 @@ class BotInstance:
             # Initialize strategy
             self.strategy = self._init_strategy()
 
-            # Restore state if exists
-            self._load_state()
+            # Restore state if enabled (default: True)
+            # Can be disabled via config['_load_state'] = False
+            should_load_state = self.config.get('_load_state', True)
+
+            if should_load_state:
+                self._load_state()
+            else:
+                logger.info(f"[{self.name}] Skipping state restoration (starting fresh)")
 
             logger.info(f"[{self.name}] ✓ Initialization complete")
             return True
@@ -169,14 +175,97 @@ class BotInstance:
         except Exception as e:
             logger.error(f"[{self.name}] Failed to save state: {e}")
 
+    def _find_latest_state_file(self) -> Optional[Path]:
+        """
+        Find the most recent state file for this bot configuration.
+
+        Looks for state files matching the exchange, symbol, and strategy,
+        and returns the one with the most recent modification time.
+
+        Also cleans up old state files, keeping only the most recent N files
+        per configuration (configurable via 'max_state_files' config option).
+
+        Returns:
+            Path to latest state file, or None if no matching files found
+        """
+        state_dir = Path(self.config.get('state_dir', 'data'))
+
+        if not state_dir.exists():
+            return None
+
+        # Get all state files
+        state_files = list(state_dir.glob('bot_state_*.json'))
+
+        if not state_files:
+            return None
+
+        # Find files matching this configuration
+        matching_files = []
+
+        for state_file in state_files:
+            try:
+                with open(state_file, 'r') as f:
+                    state = json.load(f)
+
+                # Check if this state matches our configuration
+                if (state.get('exchange') == self.exchange_id and
+                    state.get('symbol') == self.symbol and
+                    state.get('strategy') == self.strategy_name):
+
+                    # Get last update time
+                    last_update = state.get('last_update')
+                    if last_update:
+                        matching_files.append((state_file, last_update))
+
+            except Exception as e:
+                logger.debug(f"Skipping invalid state file {state_file}: {e}")
+                continue
+
+        if not matching_files:
+            return None
+
+        # Sort by last_update (most recent first)
+        matching_files.sort(key=lambda x: x[1], reverse=True)
+        latest_file = matching_files[0][0]
+
+        logger.info(f"[{self.name}] Found {len(matching_files)} matching state file(s)")
+        logger.info(f"[{self.name}] Using latest: {latest_file.name}")
+
+        # Clean up old state files (keep only the most recent N)
+        max_state_files = self.config.get('max_state_files', 5)  # Default: keep 5 most recent
+
+        if len(matching_files) > max_state_files:
+            files_to_delete = matching_files[max_state_files:]
+            logger.info(f"[{self.name}] Cleaning up {len(files_to_delete)} old state file(s)")
+
+            for old_file, _ in files_to_delete:
+                try:
+                    old_file.unlink()
+                    logger.debug(f"[{self.name}] Deleted old state file: {old_file.name}")
+                except Exception as e:
+                    logger.warning(f"[{self.name}] Failed to delete {old_file.name}: {e}")
+
+        return latest_file
+
     def _load_state(self):
         """Load bot state from disk."""
         try:
-            if not self.state_file.exists():
-                logger.info(f"[{self.name}] No saved state found")
+            # First, try to find the latest state file matching this configuration
+            latest_state_file = self._find_latest_state_file()
+
+            if latest_state_file:
+                # Use the latest matching state file
+                state_file_to_load = latest_state_file
+                logger.info(f"[{self.name}] Loading state from latest matching file")
+            elif self.state_file.exists():
+                # Fall back to the bot_id-specific file
+                state_file_to_load = self.state_file
+                logger.info(f"[{self.name}] Loading state from bot_id-specific file")
+            else:
+                logger.info(f"[{self.name}] No saved state found - starting fresh")
                 return
 
-            with open(self.state_file, 'r') as f:
+            with open(state_file_to_load, 'r') as f:
                 state = json.load(f)
 
             # Restore strategy state
@@ -193,7 +282,7 @@ class BotInstance:
             if 'connectivity' in state:
                 self.connectivity_failures = state['connectivity'].get('failure_count', 0)
 
-            logger.info(f"[{self.name}] ✓ State loaded from {self.state_file}")
+            logger.info(f"[{self.name}] ✓ State loaded from {state_file_to_load.name}")
 
         except Exception as e:
             logger.error(f"[{self.name}] Failed to load state: {e}")
@@ -470,26 +559,28 @@ class BotInstance:
         This handles limit orders that weren't immediately filled.
         """
         try:
-            # Get all open orders
+            # Get all open orders (returns a list of order dicts)
             open_orders = self.exchange.get_open_orders(self.symbol)
 
             if not open_orders:
                 return
 
             # Check each order
-            for order_id in list(open_orders.keys()):
+            for order in open_orders:
+                order_id = order.get('id')
+
                 # Skip if we've already notified strategy about this order
                 if order_id in self.notified_orders:
                     continue
 
-                # Fetch order details
-                order = self.exchange.get_order(order_id, self.symbol)
+                # Fetch latest order details
+                order_details = self.exchange.get_order(order_id, self.symbol)
 
-                if order and order.get('status') == 'closed':
+                if order_details and order_details.get('status') == 'closed':
                     logger.info(f"[{self.name}] Order {order_id} filled")
 
                     # Notify strategy
-                    self.strategy.on_order_filled(order)
+                    self.strategy.on_order_filled(order_details)
 
                     # Mark as notified
                     self.notified_orders.add(order_id)
@@ -525,21 +616,37 @@ class BotInstance:
         metadata = signal.get('metadata', {})
         price = metadata.get('price')
         amount = metadata.get('amount')
-        
+
         if not price or not amount:
             return
-        
+
         try:
-            order = self.exchange.place_order(
-                symbol=self.symbol,
-                side='buy',
-                amount=amount,
-                price=price,
-                order_type='limit'
-            )
-            
+            # Get order type from config
+            buy_order_type = self.config.get('buy_order_type', 'limit')
+
+            # Handle trailing orders
+            if buy_order_type in ['trailing_market', 'trailing_limit']:
+                trailing_percent = self.config.get('trailing_buy_percent', 0.25)
+                order = self.exchange.place_trailing_order(
+                    symbol=self.symbol,
+                    side='buy',
+                    amount=amount,
+                    activation_price=price,
+                    trailing_percent=trailing_percent,
+                    order_type=buy_order_type
+                )
+            else:
+                # Regular order (market or limit)
+                order = self.exchange.place_order(
+                    symbol=self.symbol,
+                    side='buy',
+                    amount=amount,
+                    price=price if buy_order_type == 'limit' else None,
+                    order_type=buy_order_type
+                )
+
             logger.info(f"[{self.name}] ✓ Buy order: {order.get('id')}")
-            
+
             # Update stats
             self.stats['total_trades'] += 1
 
@@ -571,13 +678,29 @@ class BotInstance:
             return
 
         try:
-            order = self.exchange.place_order(
-                symbol=self.symbol,
-                side='sell',
-                amount=amount,
-                price=price,
-                order_type='limit'
-            )
+            # Get order type from config
+            sell_order_type = self.config.get('sell_order_type', 'limit')
+
+            # Handle trailing orders
+            if sell_order_type in ['trailing_market', 'trailing_limit', 'trailing_stop']:
+                trailing_percent = self.config.get('trailing_sell_percent', 0.25)
+                order = self.exchange.place_trailing_order(
+                    symbol=self.symbol,
+                    side='sell',
+                    amount=amount,
+                    activation_price=price,
+                    trailing_percent=trailing_percent,
+                    order_type=sell_order_type
+                )
+            else:
+                # Regular order (market or limit)
+                order = self.exchange.place_order(
+                    symbol=self.symbol,
+                    side='sell',
+                    amount=amount,
+                    price=price if sell_order_type == 'limit' else None,
+                    order_type=sell_order_type
+                )
 
             logger.info(f"[{self.name}] ✓ Sell order: {order.get('id')}")
 

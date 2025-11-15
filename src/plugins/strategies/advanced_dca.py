@@ -171,9 +171,21 @@ class AdvancedDCAStrategy(StrategyPlugin):
             logger.info(f"Current price: ${current_price:,.2f}")
             logger.info(f"Active purchases: {len(self.purchases)}")
 
+        # PRIORITY 0: Check pending sell orders and place when conditions met
+        self._check_pending_sell_orders(current_price)
+
         # PRIORITY 1: Check if any purchases are ready to sell (profit target reached)
-        # Sell logic is simple - no indicators, just price-based
+        # NOTE: This is primarily for backtesting. In live/paper trading, sell orders
+        # are placed on the exchange and filled automatically.
         for purchase in self.purchases:
+            sell_order = purchase.get('sell_order', {})
+            sell_order_status = sell_order.get('status', 'pending')
+
+            # Skip if sell order is already on exchange or being tracked
+            # Only generate sell signal if no order exists (backtest mode or error recovery)
+            if sell_order_status in ['active', 'pending_market', 'pending_trail', 'trailing_active']:
+                continue
+
             sell_price = purchase.get('sell_price', 0)
             if current_price >= sell_price:
                 amount = purchase.get('amount', 0)
@@ -200,7 +212,17 @@ class AdvancedDCAStrategy(StrategyPlugin):
                     }
                 }
 
-        # PRIORITY 2: Evaluate indicators for BUY signal
+        # PRIORITY 2: Check if we've reached max purchases
+        if self.max_purchases != -1 and len(self.purchases) >= self.max_purchases:
+            if not self.is_backtest:
+                logger.info(f"Max purchases reached ({len(self.purchases)}/{self.max_purchases})")
+            return {
+                'action': 'hold',
+                'confidence': 0.0,
+                'reason': f'Max purchases reached ({len(self.purchases)}/{self.max_purchases})'
+            }
+
+        # PRIORITY 3: Evaluate indicators for BUY signal
         buy_signals = []
         reasons = []
 
@@ -368,7 +390,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
         }
 
         self.purchases.append(purchase)
-        
+
         logger.info("=" * 60)
         logger.info("Advanced DCA Purchase Complete")
         logger.info("=" * 60)
@@ -379,7 +401,227 @@ class AdvancedDCAStrategy(StrategyPlugin):
         logger.info(f"  Sell price: ${sell_price:,.2f}")
         logger.info(f"  Active purchases: {len(self.purchases)}")
         logger.info("=" * 60)
-    
+
+        # Place sell order immediately after buy fills
+        self._place_sell_order(purchase)
+
+    def _place_sell_order(self, purchase: Dict[str, Any]):
+        """
+        Place a sell order for a purchase.
+
+        Order placement strategy:
+        1. LIMIT orders: Place immediately on exchange
+        2. TRAILING orders (exchange-supported): Place immediately on exchange
+        3. TRAILING orders (bot-managed): Set to 'pending_trail' status, place when price reached
+        4. MARKET orders: Set to 'pending_market' status, place when price reached
+
+        Args:
+            purchase: Purchase dictionary with amount and sell_price
+        """
+        if not self.bot:
+            logger.warning("Cannot place sell order - bot instance not available")
+            return
+
+        try:
+            amount = purchase.get('amount', 0)
+            sell_price = purchase.get('sell_price', 0)
+
+            # Get sell order type from bot config
+            sell_order_type = self.bot.config.get('sell_order_type', 'limit')
+
+            # Determine if we should place immediately or defer
+            if sell_order_type in ['trailing_market', 'trailing_limit', 'trailing_stop']:
+                # Trailing order - check if exchange supports it
+                trailing_percent = self.bot.config.get('trailing_sell_percent', 0.25)
+                exchange_id = self.bot.exchange_id
+
+                if exchange_id in ['binance', 'binance_us', 'binanceus']:
+                    # Exchange supports native trailing - PLACE IMMEDIATELY
+                    logger.info(f"Placing exchange-native {sell_order_type} sell order @ ${sell_price:,.2f}")
+
+                    sell_order = self.bot.exchange.place_trailing_order(
+                        symbol=self.bot.symbol,
+                        side='sell',
+                        amount=amount,
+                        activation_price=sell_price,
+                        trailing_percent=trailing_percent,
+                        order_type=sell_order_type
+                    )
+
+                    # Update purchase with sell order ID
+                    purchase['sell_order']['order_id'] = sell_order.get('id')
+                    purchase['sell_order']['status'] = 'active'
+                    purchase['sell_order']['type'] = sell_order_type
+
+                    logger.info(f"✓ Exchange-native trailing sell order placed: {sell_order.get('id')}")
+                else:
+                    # Exchange doesn't support trailing - DEFER (bot-managed)
+                    logger.info(f"Exchange {exchange_id} doesn't support trailing - will track and place when price reached")
+                    purchase['sell_order']['status'] = 'pending_trail'
+                    purchase['sell_order']['type'] = sell_order_type
+                    purchase['sell_order']['trailing_percent'] = trailing_percent
+                    purchase['sell_order']['activation_price'] = sell_price
+                    # Will be placed by _check_pending_sell_orders() when price is reached
+
+            elif sell_order_type == 'limit':
+                # Limit order - PLACE IMMEDIATELY
+                logger.info(f"Placing limit sell order @ ${sell_price:,.2f}")
+
+                sell_order = self.bot.exchange.place_order(
+                    symbol=self.bot.symbol,
+                    side='sell',
+                    amount=amount,
+                    price=sell_price,
+                    order_type='limit'
+                )
+
+                # Update purchase with sell order ID
+                purchase['sell_order']['order_id'] = sell_order.get('id')
+                purchase['sell_order']['status'] = 'active'
+                purchase['sell_order']['type'] = 'limit'
+
+                logger.info(f"✓ Limit sell order placed: {sell_order.get('id')}")
+
+            elif sell_order_type == 'market':
+                # Market order - DEFER until price reached
+                logger.info(f"Market sell order will be placed when price reaches ${sell_price:,.2f}")
+                purchase['sell_order']['status'] = 'pending_market'
+                purchase['sell_order']['type'] = 'market'
+                purchase['sell_order']['target_price'] = sell_price
+                # Will be placed by _check_pending_sell_orders() when price is reached
+
+            else:
+                logger.warning(f"Unknown sell order type: {sell_order_type}, defaulting to limit")
+                # Default to limit order
+                sell_order = self.bot.exchange.place_order(
+                    symbol=self.bot.symbol,
+                    side='sell',
+                    amount=amount,
+                    price=sell_price,
+                    order_type='limit'
+                )
+                purchase['sell_order']['order_id'] = sell_order.get('id')
+                purchase['sell_order']['status'] = 'active'
+                purchase['sell_order']['type'] = 'limit'
+
+        except Exception as e:
+            logger.error(f"Failed to place sell order: {e}")
+            purchase['sell_order']['status'] = 'error'
+
+    def _check_pending_sell_orders(self, current_price: float):
+        """
+        Check pending sell orders and place them when conditions are met.
+
+        Handles:
+        1. pending_market: Place market order when price >= target_price
+        2. pending_trail: Start trailing when price >= activation_price
+
+        Args:
+            current_price: Current market price
+        """
+        if not self.bot:
+            return
+
+        for purchase in self.purchases:
+            sell_order = purchase.get('sell_order', {})
+            status = sell_order.get('status')
+
+            # Handle pending market orders
+            if status == 'pending_market':
+                target_price = sell_order.get('target_price', 0)
+
+                if current_price >= target_price:
+                    # Price reached - place market order now
+                    amount = purchase.get('amount', 0)
+
+                    try:
+                        logger.info(f"Price reached ${target_price:,.2f} - placing market sell order")
+
+                        sell_order_result = self.bot.exchange.place_order(
+                            symbol=self.bot.symbol,
+                            side='sell',
+                            amount=amount,
+                            price=None,  # Market order
+                            order_type='market'
+                        )
+
+                        # Update purchase with sell order ID
+                        purchase['sell_order']['order_id'] = sell_order_result.get('id')
+                        purchase['sell_order']['status'] = 'active'
+
+                        logger.info(f"✓ Market sell order placed: {sell_order_result.get('id')}")
+
+                    except Exception as e:
+                        logger.error(f"Failed to place market sell order: {e}")
+                        purchase['sell_order']['status'] = 'error'
+
+            # Handle pending trailing orders (bot-managed)
+            elif status == 'pending_trail':
+                activation_price = sell_order.get('activation_price', 0)
+                trailing_percent = sell_order.get('trailing_percent', 0.25)
+                order_type = sell_order.get('type', 'trailing_market')
+
+                if current_price >= activation_price:
+                    # Price reached activation point - start tracking highest price
+                    if 'highest_price' not in sell_order:
+                        # First time reaching activation price
+                        logger.info(f"Trailing activated at ${current_price:,.2f} (activation: ${activation_price:,.2f})")
+                        purchase['sell_order']['highest_price'] = current_price
+                        purchase['sell_order']['status'] = 'trailing_active'
+
+            # Handle active trailing (bot-managed)
+            elif status == 'trailing_active':
+                highest_price = sell_order.get('highest_price', current_price)
+                trailing_percent = sell_order.get('trailing_percent', 0.25)
+                order_type = sell_order.get('type', 'trailing_market')
+
+                # Update highest price if current price is higher
+                if current_price > highest_price:
+                    purchase['sell_order']['highest_price'] = current_price
+                    highest_price = current_price
+                    if not self.is_backtest:
+                        logger.debug(f"Trailing: new high ${highest_price:,.2f}")
+
+                # Check if price dropped enough to trigger sell
+                drop_percent = ((highest_price - current_price) / highest_price) * 100
+
+                if drop_percent >= trailing_percent:
+                    # Trailing stop triggered - place order now
+                    amount = purchase.get('amount', 0)
+
+                    try:
+                        logger.info(f"Trailing stop triggered! High: ${highest_price:,.2f}, Current: ${current_price:,.2f}, Drop: {drop_percent:.2f}%")
+
+                        # Place market or limit order based on original order type
+                        if 'market' in order_type:
+                            # Place market order
+                            sell_order_result = self.bot.exchange.place_order(
+                                symbol=self.bot.symbol,
+                                side='sell',
+                                amount=amount,
+                                price=None,
+                                order_type='market'
+                            )
+                        else:
+                            # Place limit order at current price
+                            sell_order_result = self.bot.exchange.place_order(
+                                symbol=self.bot.symbol,
+                                side='sell',
+                                amount=amount,
+                                price=current_price,
+                                order_type='limit'
+                            )
+
+                        # Update purchase with sell order ID
+                        purchase['sell_order']['order_id'] = sell_order_result.get('id')
+                        purchase['sell_order']['status'] = 'active'
+
+                        logger.info(f"✓ Trailing sell order placed: {sell_order_result.get('id')}")
+
+                    except Exception as e:
+                        logger.error(f"Failed to place trailing sell order: {e}")
+                        purchase['sell_order']['status'] = 'error'
+
     def _handle_sell_filled(self, order: Dict[str, Any]):
         """Handle a filled sell order and apply profit to previous purchase."""
         sale_amount = order.get('cost', 0)  # Total revenue from sale
@@ -519,6 +761,95 @@ class AdvancedDCAStrategy(StrategyPlugin):
                    f"${self.total_profit:,.2f} total profit, "
                    f"{self.winning_trades}W/{self.losing_trades}L, "
                    f"${self.total_dca_applied:,.2f} total DCA applied")
+
+        # Recreate sell orders for purchases that don't have active sell orders
+        self._restore_sell_orders()
+
+    def _restore_sell_orders(self):
+        """
+        Restore sell orders for purchases after state restoration.
+
+        Restoration logic:
+        1. 'pending' status (no order_id): Call _place_sell_order() to set up order
+        2. 'active' status (has order_id): Verify order still exists on exchange
+        3. 'pending_market' status: Keep in pending state, will be placed when price reached
+        4. 'pending_trail' status: Keep in pending state, will be placed when price reached
+        5. 'bot_trailing' status (legacy): Convert to 'pending_trail'
+        """
+        if not self.bot:
+            logger.warning("Cannot restore sell orders - bot instance not available")
+            return
+
+        if not self.purchases:
+            logger.info("No purchases to restore sell orders for")
+            return
+
+        logger.info(f"Restoring sell orders for {len(self.purchases)} purchases...")
+
+        for i, purchase in enumerate(self.purchases):
+            sell_order = purchase.get('sell_order', {})
+            order_id = sell_order.get('order_id')
+            status = sell_order.get('status', 'pending')
+            order_type = sell_order.get('type', 'unknown')
+
+            logger.info(f"Purchase #{i+1}: status={status}, type={order_type}, order_id={order_id}")
+
+            # If order was never set up (status='pending' and no order_id)
+            if status == 'pending' and not order_id:
+                logger.info(f"  → Setting up sell order for purchase #{i+1}")
+                self._place_sell_order(purchase)
+
+            # If order was placed on exchange (limit or exchange-native trailing)
+            elif order_id and status == 'active':
+                try:
+                    # Check if order still exists on exchange
+                    order_details = self.bot.exchange.get_order(order_id, self.bot.symbol)
+
+                    if order_details:
+                        order_status = order_details.get('status')
+                        if order_status == 'closed':
+                            logger.info(f"  → Order {order_id} was filled while bot was offline")
+                            # Will be handled by _check_filled_orders in bot loop
+                        elif order_status == 'open':
+                            logger.info(f"  → Order {order_id} still active on exchange")
+                        else:
+                            logger.warning(f"  → Order {order_id} has status: {order_status}")
+                    else:
+                        logger.warning(f"  → Order {order_id} not found on exchange, recreating")
+                        # Clear the old order_id and recreate
+                        purchase['sell_order']['order_id'] = None
+                        purchase['sell_order']['status'] = 'pending'
+                        self._place_sell_order(purchase)
+
+                except Exception as e:
+                    logger.error(f"  → Error checking order {order_id}: {e}")
+                    logger.info(f"  → Recreating sell order")
+                    purchase['sell_order']['order_id'] = None
+                    purchase['sell_order']['status'] = 'pending'
+                    self._place_sell_order(purchase)
+
+            # If order is pending market execution
+            elif status == 'pending_market':
+                target_price = sell_order.get('target_price', 0)
+                logger.info(f"  → Market order pending - will place when price reaches ${target_price:,.2f}")
+                # Will be handled by _check_pending_sell_orders() in analyze()
+
+            # If order is pending trailing activation
+            elif status == 'pending_trail':
+                activation_price = sell_order.get('activation_price', 0)
+                trailing_percent = sell_order.get('trailing_percent', 0)
+                logger.info(f"  → Trailing order pending - will activate at ${activation_price:,.2f} with {trailing_percent}% trail")
+                # Will be handled by _check_pending_sell_orders() in analyze()
+
+            # Legacy 'bot_trailing' status - convert to 'pending_trail'
+            elif status == 'bot_trailing':
+                logger.info(f"  → Converting legacy 'bot_trailing' to 'pending_trail'")
+                purchase['sell_order']['status'] = 'pending_trail'
+                if 'activation_price' not in sell_order:
+                    purchase['sell_order']['activation_price'] = purchase.get('sell_price', 0)
+                # Will be handled by _check_pending_sell_orders() in analyze()
+
+        logger.info("✓ Sell order restoration complete")
 
     def start_trailing(self, direction: str, activation_price: float, trailing_percent: float):
         """Start trailing for buy or sell (same as DCA strategy)."""

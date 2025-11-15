@@ -81,30 +81,53 @@ class ConfigManager:
 
             print()
             print(f"{Fore.CYAN}Options:{Style.RESET_ALL}")
-            print(f"  {Fore.YELLOW}1.{Style.RESET_ALL} Start bot (live/paper trading)")
-            print(f"  {Fore.YELLOW}2.{Style.RESET_ALL} Run backtest (test strategy on historical data)")
-            print(f"  {Fore.YELLOW}3.{Style.RESET_ALL} Create new configuration (interactive setup)")
-            print(f"  {Fore.YELLOW}4.{Style.RESET_ALL} Edit existing configuration")
-            print(f"  {Fore.YELLOW}5.{Style.RESET_ALL} Update API credentials (keychain)")
-            print(f"  {Fore.YELLOW}6.{Style.RESET_ALL} View current configuration")
-            print(f"  {Fore.YELLOW}7.{Style.RESET_ALL} Delete API credentials from keychain")
-            print(f"  {Fore.YELLOW}8.{Style.RESET_ALL} Exit")
+            print(f"  {Fore.YELLOW}1.{Style.RESET_ALL} Start bot (live/paper trading) - Resume from saved state")
+            print(f"  {Fore.YELLOW}2.{Style.RESET_ALL} Start bot (fresh) - Start without loading previous state")
+            print(f"  {Fore.YELLOW}3.{Style.RESET_ALL} Run backtest (test strategy on historical data)")
+            print(f"  {Fore.YELLOW}4.{Style.RESET_ALL} Create new configuration (interactive setup)")
+            print(f"  {Fore.YELLOW}5.{Style.RESET_ALL} Edit existing configuration")
+            print(f"  {Fore.YELLOW}6.{Style.RESET_ALL} Update API credentials (keychain)")
+            print(f"  {Fore.YELLOW}7.{Style.RESET_ALL} View current configuration")
+            print(f"  {Fore.YELLOW}8.{Style.RESET_ALL} Delete API credentials from keychain")
+            print(f"  {Fore.YELLOW}9.{Style.RESET_ALL} Exit")
             print()
 
-            choice = input(f"{Fore.YELLOW}Select option (1-8):{Style.RESET_ALL} ").strip()
+            choice = input(f"{Fore.YELLOW}Select option (1-9):{Style.RESET_ALL} ").strip()
 
             if choice == '1':
-                # Start with existing config
+                # Start with existing config (resume from saved state)
                 if has_config:
                     config_file = config_path if config_path else str(default_config)
                     config = self.load_config(config_file)
                     config['_mode'] = 'live'  # Mark as live trading mode
+                    config['_load_state'] = True  # Load previous state
                     return config
                 else:
                     print(f"{Fore.RED}✗ No configuration found. Please create one first.{Style.RESET_ALL}")
                     input("Press Enter to continue...")
 
             elif choice == '2':
+                # Start fresh (without loading previous state)
+                if has_config:
+                    config_file = config_path if config_path else str(default_config)
+                    config = self.load_config(config_file)
+                    config['_mode'] = 'live'  # Mark as live trading mode
+                    config['_load_state'] = False  # Don't load previous state
+                    print()
+                    print(f"{Fore.YELLOW}⚠️  Starting fresh - previous state will NOT be loaded{Style.RESET_ALL}")
+                    print(f"{Fore.YELLOW}   Any open positions from previous runs will be ignored{Style.RESET_ALL}")
+                    print()
+                    confirm = input(f"{Fore.YELLOW}Are you sure? (y/n):{Style.RESET_ALL} ").strip().lower()
+                    if confirm == 'y':
+                        return config
+                    else:
+                        print(f"{Fore.GREEN}Cancelled - returning to menu{Style.RESET_ALL}")
+                        input("Press Enter to continue...")
+                else:
+                    print(f"{Fore.RED}✗ No configuration found. Please create one first.{Style.RESET_ALL}")
+                    input("Press Enter to continue...")
+
+            elif choice == '3':
                 # Run backtest
                 if has_config:
                     config_file = config_path if config_path else str(default_config)
@@ -115,13 +138,13 @@ class ConfigManager:
                     print(f"{Fore.RED}✗ No configuration found. Please create one first.{Style.RESET_ALL}")
                     input("Press Enter to continue...")
 
-            elif choice == '3':
+            elif choice == '4':
                 # Create new configuration
                 self.interactive_setup()
                 # Return to menu after creating config
                 input(f"\n{Fore.GREEN}Press Enter to return to main menu...{Style.RESET_ALL}")
 
-            elif choice == '4':
+            elif choice == '5':
                 # Edit existing configuration
                 if has_config:
                     config_file = config_path if config_path else str(default_config)
@@ -130,11 +153,11 @@ class ConfigManager:
                     print(f"{Fore.RED}✗ No configuration found. Please create one first.{Style.RESET_ALL}")
                     input("Press Enter to continue...")
 
-            elif choice == '5':
+            elif choice == '6':
                 # Update API credentials
                 self.update_credentials()
 
-            elif choice == '6':
+            elif choice == '7':
                 # View configuration
                 if has_config:
                     config_file = config_path if config_path else str(default_config)
@@ -143,17 +166,17 @@ class ConfigManager:
                     print(f"{Fore.RED}✗ No configuration found.{Style.RESET_ALL}")
                 input("Press Enter to continue...")
 
-            elif choice == '7':
+            elif choice == '8':
                 # Delete credentials
                 self.delete_credentials()
 
-            elif choice == '8':
+            elif choice == '9':
                 # Exit
                 print(f"{Fore.YELLOW}Exiting...{Style.RESET_ALL}")
                 sys.exit(0)
 
             else:
-                print(f"{Fore.RED}✗ Invalid option. Please select 1-8.{Style.RESET_ALL}")
+                print(f"{Fore.RED}✗ Invalid option. Please select 1-9.{Style.RESET_ALL}")
                 input("Press Enter to continue...")
 
     def load_config(self, config_path: str) -> Dict[str, Any]:

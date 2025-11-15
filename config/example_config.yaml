@@ -40,6 +40,18 @@ risk:
 # Paper trading mode (no real orders)
 paper_trading: false
 
+# Order types
+buy_order_type: limit           # Options: limit, market, trailing_market, trailing_limit
+sell_order_type: limit          # Options: limit, market, trailing_market, trailing_limit, trailing_stop
+trailing_buy_percent: 0.25      # Trailing percentage for buy orders (if using trailing)
+trailing_sell_percent: 0.25     # Trailing percentage for sell orders (if using trailing)
+
+# State persistence
+state_dir: data                 # Directory to save bot state files
+auto_save: true                 # Enable automatic state saving
+save_interval: 60               # Auto-save interval in seconds
+max_state_files: 5              # Keep only N most recent state files per configuration
+
 # Logging
 logging:
   level: INFO              # Options: DEBUG, INFO, WARNING, ERROR
