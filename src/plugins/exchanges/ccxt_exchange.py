@@ -481,7 +481,9 @@ class CCXTExchange(ExchangePlugin):
         amount: float,
         trailing_percent: float,
         price: Optional[float] = None,
-        order_type: str = 'limit'
+        order_type: str = 'limit',
+        trailing_delta: Optional[float] = None
+
     ) -> Dict[str, Any]:
         """
         Place a trailing order (if supported by exchange).
@@ -516,12 +518,27 @@ class CCXTExchange(ExchangePlugin):
         if exchange_id in ['binance', 'binanceus', 'binanceusdm', 'binancecoinm']:
             params = {
                 'trailingPercent': trailing_percent,  # Percentage away from current market price
+                # 'trailingDelta': (float(trailing_percent) * 100),  #The distance in BIPS (Basis Points, where 100 BIPS = 1%)
+                # that the price must move against the order's favor to trigger the stop. For example, a trailingDelta of 700 means
+                # the stop will trigger if the price moves 7% against the position.
+                # # 'trailingAmount': 100.0, # quote amount away from the current market price
+                # 'trailingTriggerPrice': act_price,  # the price to trigger activating a trailing stop order
+                'activationPrice': price, #The price at which the trailing stop order becomes active. If this is not set, the order
+                # starts trailing immediately at the current market price.
+                # 'reduceOnly': True,  # set to True if you want to close a position, set to False if you want to open a new position
+                "stopLossOrTakeProfit": "takeProfit",
+                # a stopLossOrTakeProfit exchange specific param was required for the implementation:
+                'stopPrice': price,     #The price at which the trailing stop order should activate. If you want it to start immediately,
+                # set it to the current market price
+                'callbackRate': trailing_percent,    #Specifies the trailing delta as a percentage (e.g., '0.2' for 0.2%).
+                'reduceOnly': True,  # Set to True to ensure this order only reduces a position
+
             }
 
             # For Binance, trailing orders are typically stop-loss or take-profit orders
             if side == 'sell':
                 # Trailing sell (stop-loss that trails up)
-                order_type_to_use = 'TRAILING_STOP_MARKET'
+                order_type_to_use = 'TRAILING_STOP_LIMIT'
             else:
                 # Trailing buy (less common, but supported)
                 order_type_to_use = 'TRAILING_STOP_MARKET'

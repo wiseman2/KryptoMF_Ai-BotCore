@@ -680,6 +680,10 @@ class BotInstance:
         try:
             # Get order type from config
             sell_order_type = self.config.get('sell_order_type', 'limit')
+            profit_target = self.config.get('profit_target', 1)
+            fees = float(self.config.get('maker', 0.4)) # expected fees for transaction
+            trailing_delta_temp = profit_target  + (fees * 2)   #double fees, to include both buy and sell
+            trailing_delta = float(trailing_delta_temp) * 100
 
             # Handle trailing orders
             if sell_order_type in ['trailing_market', 'trailing_limit', 'trailing_stop']:
@@ -690,7 +694,8 @@ class BotInstance:
                     amount=amount,
                     activation_price=price,
                     trailing_percent=trailing_percent,
-                    order_type=sell_order_type
+                    order_type=sell_order_type,
+                    trailing_delta=trailing_delta
                 )
             else:
                 # Regular order (market or limit)

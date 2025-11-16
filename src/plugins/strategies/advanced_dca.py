@@ -16,6 +16,9 @@ This makes it easier to sell the first purchase at a profit.
 """
 
 import time
+import json
+from pathlib import Path
+from datetime import datetime
 from typing import Dict, Any, List
 from plugins.base.strategy_plugin import StrategyPlugin
 from plugins.indicators import TechnicalIndicators
@@ -366,26 +369,59 @@ class AdvancedDCAStrategy(StrategyPlugin):
         cost = order.get('cost', 0)
         amount = order.get('filled', 0)
         price = order.get('price', 0)
-        fee = order.get('fee', {}).get('cost', 0)
-        
+        fee_info = order.get('fee', {})
+        fee = fee_info.get('cost', 0)
+
         # Sell price = (cost + fees) * (1 + min_profit)
         sell_price = ((cost + fee) / amount) * (1 + self.min_profit_percent + 0.002)  # Add 0.2% buffer
-        
+
+        # Create comprehensive purchase record with all necessary information for state restoration
         purchase = {
+            # Basic order information
+            'symbol': order.get('symbol'),
+            'purchase_num': len(self.purchases) + 1,
             'buy_order_id': order.get('id'),
-            'cost': cost,
+            'client_order_id': order.get('clientOrderId'),
+
+            # Purchase details
             'amount': amount,
-            'price': price,
+            'price': price,  # Average fill price
+            'cost': cost,  # Total cost (amount * price)
             'fee': fee,
+            'fee_currency': fee_info.get('currency'),
+
+            # Timestamps
+            'timestamp': time.time(),
+            'datetime': order.get('datetime'),
+            'buy_order_timestamp': order.get('timestamp'),
+
+            # Sell target
             'sell_price': sell_price,
             'dca_applied': 0.0,
-            'timestamp': time.time(),
+
+            # Complete buy order info (for reference)
+            'buy_order_info': {
+                'id': order.get('id'),
+                'type': order.get('type'),
+                'side': order.get('side'),
+                'status': order.get('status'),
+                'filled': order.get('filled'),
+                'remaining': order.get('remaining'),
+                'average': order.get('average'),
+                'info': order.get('info', {})  # Raw exchange response
+            },
+
+            # Sell order tracking
             'sell_order': {
-                'status': 'pending',  # pending, filled, cancelled
+                'status': 'pending',  # pending, active, pending_market, pending_trail, trailing_active, filled, cancelled, error
+                'type': None,  # Will be set when order is placed
                 'target_price': sell_price,
                 'order_id': None,
+                'client_order_id': None,
                 'filled_price': None,
-                'filled_timestamp': None
+                'filled_timestamp': None,
+                'filled_amount': None,
+                'order_info': None  # Complete sell order details when placed
             }
         }
 
@@ -448,10 +484,12 @@ class AdvancedDCAStrategy(StrategyPlugin):
                         order_type=sell_order_type
                     )
 
-                    # Update purchase with sell order ID
+                    # Update purchase with complete sell order information
                     purchase['sell_order']['order_id'] = sell_order.get('id')
+                    purchase['sell_order']['client_order_id'] = sell_order.get('clientOrderId')
                     purchase['sell_order']['status'] = 'active'
                     purchase['sell_order']['type'] = sell_order_type
+                    purchase['sell_order']['order_info'] = sell_order  # Store complete order details
 
                     logger.info(f"✓ Exchange-native trailing sell order placed: {sell_order.get('id')}")
                 else:
@@ -475,10 +513,12 @@ class AdvancedDCAStrategy(StrategyPlugin):
                     order_type='limit'
                 )
 
-                # Update purchase with sell order ID
+                # Update purchase with complete sell order information
                 purchase['sell_order']['order_id'] = sell_order.get('id')
+                purchase['sell_order']['client_order_id'] = sell_order.get('clientOrderId')
                 purchase['sell_order']['status'] = 'active'
                 purchase['sell_order']['type'] = 'limit'
+                purchase['sell_order']['order_info'] = sell_order  # Store complete order details
 
                 logger.info(f"✓ Limit sell order placed: {sell_order.get('id')}")
 
@@ -501,8 +541,10 @@ class AdvancedDCAStrategy(StrategyPlugin):
                     order_type='limit'
                 )
                 purchase['sell_order']['order_id'] = sell_order.get('id')
+                purchase['sell_order']['client_order_id'] = sell_order.get('clientOrderId')
                 purchase['sell_order']['status'] = 'active'
                 purchase['sell_order']['type'] = 'limit'
+                purchase['sell_order']['order_info'] = sell_order  # Store complete order details
 
         except Exception as e:
             logger.error(f"Failed to place sell order: {e}")
@@ -545,9 +587,11 @@ class AdvancedDCAStrategy(StrategyPlugin):
                             order_type='market'
                         )
 
-                        # Update purchase with sell order ID
+                        # Update purchase with complete sell order information
                         purchase['sell_order']['order_id'] = sell_order_result.get('id')
+                        purchase['sell_order']['client_order_id'] = sell_order_result.get('clientOrderId')
                         purchase['sell_order']['status'] = 'active'
+                        purchase['sell_order']['order_info'] = sell_order_result  # Store complete order details
 
                         logger.info(f"✓ Market sell order placed: {sell_order_result.get('id')}")
 
@@ -612,9 +656,11 @@ class AdvancedDCAStrategy(StrategyPlugin):
                                 order_type='limit'
                             )
 
-                        # Update purchase with sell order ID
+                        # Update purchase with complete sell order information
                         purchase['sell_order']['order_id'] = sell_order_result.get('id')
+                        purchase['sell_order']['client_order_id'] = sell_order_result.get('clientOrderId')
                         purchase['sell_order']['status'] = 'active'
+                        purchase['sell_order']['order_info'] = sell_order_result  # Store complete order details
 
                         logger.info(f"✓ Trailing sell order placed: {sell_order_result.get('id')}")
 
@@ -627,29 +673,46 @@ class AdvancedDCAStrategy(StrategyPlugin):
         sale_amount = order.get('cost', 0)  # Total revenue from sale
         fee = order.get('fee', {}).get('cost', 0)
         sold_amount = order.get('amount', 0)
+        sell_order_id = order.get('id')
 
-        # Find and remove the sold purchase by matching the amount
+        # Find and remove the sold purchase by matching the sell order ID
         if not self.purchases:
             logger.warning("Sell order filled but no purchases in list!")
             return
 
-        # Find the purchase that matches this sell order (by amount)
+        # Find the purchase that matches this sell order
+        # Try to match by sell order ID first (most reliable)
         sold_purchase = None
         for i, purchase in enumerate(self.purchases):
-            if abs(purchase.get('amount', 0) - sold_amount) < 1e-10:  # Floating point comparison
+            sell_order = purchase.get('sell_order', {})
+
+            # Match by sell order ID (most reliable)
+            if sell_order.get('order_id') == sell_order_id:
                 sold_purchase = self.purchases.pop(i)
+                logger.info(f"Matched sell order {sell_order_id} to purchase #{purchase.get('purchase_num')}")
                 break
 
+        # Fallback: match by amount if order ID doesn't match
         if not sold_purchase:
-            logger.warning(f"Could not find purchase matching sell amount {sold_amount:.8f}")
+            for i, purchase in enumerate(self.purchases):
+                if abs(purchase.get('amount', 0) - sold_amount) < 1e-10:  # Floating point comparison
+                    sold_purchase = self.purchases.pop(i)
+                    logger.warning(f"Matched by amount (order ID not found): {sold_amount:.8f}")
+                    break
+
+        if not sold_purchase:
+            logger.warning(f"Could not find purchase matching sell order {sell_order_id} or amount {sold_amount:.8f}")
             return
 
-        # Update sell order status
+        # Update sell order status with complete fill information
         if 'sell_order' in sold_purchase:
             sold_purchase['sell_order']['status'] = 'filled'
             sold_purchase['sell_order']['order_id'] = order.get('id')
             sold_purchase['sell_order']['filled_price'] = order.get('price', 0)
+            sold_purchase['sell_order']['filled_amount'] = order.get('filled', 0)
             sold_purchase['sell_order']['filled_timestamp'] = time.time()
+            sold_purchase['sell_order']['filled_datetime'] = order.get('datetime')
+            sold_purchase['sell_order']['order_info'] = order  # Store complete filled order details
 
         # Calculate profit
         purchase_cost = sold_purchase['cost']
@@ -682,6 +745,9 @@ class AdvancedDCAStrategy(StrategyPlugin):
         # Apply DCA to previous purchase if exists
         if dca_to_add > 0 and len(self.purchases) > 0:
             self._apply_dca_to_previous(dca_to_add)
+
+        # Save completed purchase to historical file
+        self._save_completed_purchase(sold_purchase, total_profit)
     
     def _apply_dca_to_previous(self, dca_amount: float):
         """
@@ -720,7 +786,42 @@ class AdvancedDCAStrategy(StrategyPlugin):
         
         # TODO: Cancel and replace the sell order on the exchange with new price
         # This would require exchange integration
-    
+
+    def _save_completed_purchase(self, purchase: Dict[str, Any], profit: float):
+        """
+        Save completed purchase to historical file for later review.
+
+        Args:
+            purchase: Completed purchase record
+            profit: Total profit from the sale
+        """
+        if not self.bot:
+            return
+
+        try:
+            # Create history directory if it doesn't exist
+            history_dir = Path('data/history')
+            history_dir.mkdir(parents=True, exist_ok=True)
+
+            # Create filename based on bot configuration
+            symbol_safe = self.bot.symbol.replace('/', '-')
+            history_file = history_dir / f"completed_trades_{self.bot.exchange_id}_{symbol_safe}_{self.bot.strategy_name}.jsonl"
+
+            # Add profit and completion timestamp to the record
+            completed_record = purchase.copy()
+            completed_record['profit'] = profit
+            completed_record['completed_timestamp'] = time.time()
+            completed_record['completed_datetime'] = datetime.now().isoformat()
+
+            # Append to JSONL file (one JSON object per line)
+            with open(history_file, 'a') as f:
+                f.write(json.dumps(completed_record) + '\n')
+
+            logger.debug(f"Completed purchase saved to {history_file}")
+
+        except Exception as e:
+            logger.error(f"Failed to save completed purchase to history: {e}")
+
     def get_state(self) -> Dict[str, Any]:
         """
         Get current strategy state.
