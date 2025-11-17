@@ -554,106 +554,100 @@ class BotInstance:
 
     def _check_filled_orders(self):
         """
-        Check for filled orders and notify strategy.
+        Check for filled orders and handle sell order placement.
 
-        This handles:
-        1. Pending buy orders (tracked in strategy.pending_buy_orders)
-        2. Pending sell orders (tracked in purchase.sell_order)
-        3. Any other open orders
+        Flow:
+        1. Check pending buy orders → If filled, create purchase with sell_order.status='pending'
+        2. Check purchases with sell_order.status='pending' → Place sell order
+        3. Check purchases with sell_order.status='active' → Check if filled
         """
         try:
-            # PRIORITY 1: Check pending buy orders from strategy
+            # PRIORITY 1: Check pending buy orders - create purchase when filled
             if hasattr(self.strategy, 'pending_buy_orders'):
-                pending_buy_orders = list(self.strategy.pending_buy_orders)  # Copy to avoid modification during iteration
+                pending_buy_orders = list(self.strategy.pending_buy_orders)
 
                 for order_id in pending_buy_orders:
-                    # Skip if already notified
-                    if order_id in self.notified_orders:
-                        continue
-
                     try:
-                        # Fetch order details
-                        order_details = self.exchange.get_order(order_id, self.symbol)
+                        # Fetch order details using CCXT directly
+                        order_details = self.exchange.exchange.fetch_order(order_id, symbol=self.symbol)
 
-                        if order_details and order_details.get('status') == 'closed':
-                            logger.info(f"[{self.name}] ✓ Pending buy order {order_id} filled")
+                        if not order_details:
+                            logger.warning(f"[{self.name}] Could not fetch buy order {order_id}")
+                            continue
 
-                            # Notify strategy
+                        # Check if order is filled
+                        if order_details.get('status') == 'closed':
+                            logger.info(f"[{self.name}] ✓ Buy order {order_id} filled - creating purchase")
+
+                            # Create purchase (this removes from pending_buy_orders and sets sell_order.status='pending')
                             self.strategy.on_order_filled(order_details)
 
-                            # Mark as notified
-                            self.notified_orders.add(order_id)
-
-                            # Save state after order fill
+                            # Save state
                             self._save_state()
-                            logger.info(f"[{self.name}] State saved after buy order filled")
+                            logger.info(f"[{self.name}] Purchase created - sell order status: pending")
 
                     except Exception as e:
-                        logger.error(f"[{self.name}] Error checking pending buy order {order_id}: {e}")
+                        logger.error(f"[{self.name}] Error checking buy order {order_id}: {e}")
+                        import traceback
+                        logger.error(traceback.format_exc())
 
-            # PRIORITY 2: Check pending sell orders from purchases
+            # PRIORITY 2: Check purchases with pending sell orders - place sell order
+            if hasattr(self.strategy, 'purchases'):
+                for purchase in self.strategy.purchases:
+                    sell_order = purchase.get('sell_order', {})
+
+                    # If sell order is pending (not yet placed), place it now
+                    if sell_order.get('status') == 'pending':
+                        try:
+                            logger.info(f"[{self.name}] Placing sell order for purchase #{purchase.get('purchase_num')}")
+                            self.strategy._place_sell_order(purchase)
+                            self._save_state()
+                            logger.info(f"[{self.name}] Sell order placed - status: {purchase['sell_order']['status']}")
+                        except Exception as e:
+                            logger.error(f"[{self.name}] Error placing sell order: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
+
+            # PRIORITY 3: Check purchases with active sell orders - check if filled
             if hasattr(self.strategy, 'purchases'):
                 for purchase in self.strategy.purchases:
                     sell_order = purchase.get('sell_order', {})
                     order_id = sell_order.get('order_id')
 
-                    # Only check if order is active and not already notified
-                    if order_id and sell_order.get('status') == 'active' and order_id not in self.notified_orders:
+                    # Only check if order is active
+                    if order_id and sell_order.get('status') == 'active':
                         try:
-                            # Fetch order details
-                            order_details = self.exchange.get_order(order_id, self.symbol)
+                            # Fetch order details using CCXT directly
+                            order_details = self.exchange.exchange.fetch_order(order_id, symbol=self.symbol)
 
-                            if order_details and order_details.get('status') == 'closed':
-                                logger.info(f"[{self.name}] ✓ Pending sell order {order_id} filled")
+                            if not order_details:
+                                logger.warning(f"[{self.name}] Could not fetch sell order {order_id}")
+                                sell_order['status'] = 'error'
+                                continue
 
-                                # Notify strategy
+                            # Check if order is filled
+                            if order_details.get('status') == 'closed':
+                                logger.info(f"[{self.name}] ✓ Sell order {order_id} filled - completing purchase")
+
+                                # Handle sell fill (this removes purchase from list)
                                 self.strategy.on_order_filled(order_details)
-
-                                # Mark as notified
-                                self.notified_orders.add(order_id)
 
                                 # Update profit stats
                                 self._update_profit_stats()
 
-                                # Save state after order fill
+                                # Save state
                                 self._save_state()
-                                logger.info(f"[{self.name}] State saved after sell order filled")
+                                logger.info(f"[{self.name}] Purchase complete and removed")
 
                         except Exception as e:
-                            logger.error(f"[{self.name}] Error checking pending sell order {order_id}: {e}")
-
-            # PRIORITY 3: Check any other open orders (legacy support)
-            open_orders = self.exchange.get_open_orders(self.symbol)
-
-            if open_orders:
-                for order in open_orders:
-                    order_id = order.get('id')
-
-                    # Skip if we've already notified strategy about this order
-                    if order_id in self.notified_orders:
-                        continue
-
-                    # Fetch latest order details
-                    order_details = self.exchange.get_order(order_id, self.symbol)
-
-                    if order_details and order_details.get('status') == 'closed':
-                        logger.info(f"[{self.name}] Order {order_id} filled")
-
-                        # Notify strategy
-                        self.strategy.on_order_filled(order_details)
-
-                        # Mark as notified
-                        self.notified_orders.add(order_id)
-
-                        # Update profit stats if it was a sell order
-                        if order.get('side') == 'sell':
-                            self._update_profit_stats()
-
-                        # Save state after order fill
-                        self._save_state()
+                            logger.error(f"[{self.name}] Error checking sell order {order_id}: {e}")
+                            import traceback
+                            logger.error(traceback.format_exc())
 
         except Exception as e:
-            logger.error(f"[{self.name}] Error checking filled orders: {e}")
+            logger.error(f"[{self.name}] Error in _check_filled_orders: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
 
     def _update_profit_stats(self):
         """Update profit statistics from strategy."""

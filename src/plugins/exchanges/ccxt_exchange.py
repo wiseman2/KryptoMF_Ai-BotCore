@@ -282,20 +282,26 @@ class CCXTExchange(ExchangePlugin):
     
     def get_order(self, order_id: str, symbol: str) -> Dict[str, Any]:
         """
-        Get order details.
+        Get order details using CCXT fetch_order.
 
         Args:
             order_id: Order ID
             symbol: Trading pair
 
         Returns:
-            Order details
+            Order details or None if not found
         """
         if self.paper_trading:
             return self.paper_orders.get(order_id, None)
 
-        logger.debug(f"Fetching order {order_id}")
-        return self.exchange.fetch_order(order_id, symbol)
+        try:
+            logger.debug(f"Fetching order {order_id} for {symbol}")
+            # Use fetch_order with symbol as named parameter (required for Binance US)
+            order = self.exchange.fetch_order(order_id, symbol=symbol)
+            return order
+        except Exception as e:
+            logger.error(f"Error fetching order {order_id}: {e}")
+            return None
     
     def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
         """
