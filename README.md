@@ -620,6 +620,7 @@ python cli.py --config <file> --verbose          # Verbose logging
 - 🚧 Performance optimizations
 
 ### Planned Features 📋
+- 📋 Cooldown period after price drop (prevent buying immediately after sharp drops)
 - 📋 WebSocket support for real-time data (waiting for multibot plugin)
 - 📋 Advanced order types (OCO, trailing stop-limit)
 - 📋 Portfolio rebalancing strategies

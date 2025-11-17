@@ -226,6 +226,40 @@ class AdvancedDCAStrategy(StrategyPlugin):
             logger.info(f"Current price: ${current_price:,.2f}")
             logger.info(f"Active purchases: {len(self.purchases)}")
 
+            # Log sell order status for each purchase
+            if len(self.purchases) > 0:
+                logger.info("Sell order status:")
+                for i, purchase in enumerate(self.purchases, 1):
+                    sell_order = purchase.get('sell_order', {})
+                    status = sell_order.get('status', 'unknown')
+                    sell_price = purchase.get('sell_price', 0)
+                    price_rise_needed = ((sell_price - current_price) / current_price) * 100
+
+                    if status == 'active':
+                        # Exchange-native trailing order
+                        logger.info(f"  Purchase #{i}: Active on exchange @ ${sell_price:,.2f} "
+                                  f"(+{price_rise_needed:.2f}% to activate)")
+                    elif status == 'pending_market':
+                        target_price = sell_order.get('target_price', sell_price)
+                        price_rise_needed = ((target_price - current_price) / current_price) * 100
+                        logger.info(f"  Purchase #{i}: Pending market order @ ${target_price:,.2f} "
+                                  f"(+{price_rise_needed:.2f}% to activate)")
+                    elif status == 'pending_trail':
+                        activation_price = sell_order.get('activation_price', sell_price)
+                        price_rise_needed = ((activation_price - current_price) / current_price) * 100
+                        trailing_percent = sell_order.get('trailing_percent', 0.25)
+                        logger.info(f"  Purchase #{i}: Pending trailing @ ${activation_price:,.2f} "
+                                  f"(+{price_rise_needed:.2f}% to activate, {trailing_percent}% trail)")
+                    elif status == 'trailing_active':
+                        highest_price = sell_order.get('highest_price', current_price)
+                        trailing_percent = sell_order.get('trailing_percent', 0.25)
+                        trigger_price = highest_price * (1 - trailing_percent / 100)
+                        logger.info(f"  Purchase #{i}: TRAILING ACTIVE - High: ${highest_price:,.2f}, "
+                                  f"Trigger: ${trigger_price:,.2f}")
+                    else:
+                        logger.info(f"  Purchase #{i}: {status} @ ${sell_price:,.2f} "
+                                  f"(+{price_rise_needed:.2f}% to reach target)")
+
         # PRIORITY 0: Check pending sell orders and place when conditions met
         self._check_pending_sell_orders(current_price)
 
@@ -376,11 +410,23 @@ class AdvancedDCAStrategy(StrategyPlugin):
 
             if price_drop_from_last < required_step:
                 if not self.is_backtest:
-                    logger.info(f"Price not low enough: {price_drop_from_last:.2f}% drop (need {required_step:.2f}%)")
+                    # Check if we're at max purchases
+                    if self.max_purchases != -1 and len(self.purchases) >= self.max_purchases:
+                        logger.info(f"Max purchases reached ({len(self.purchases)}/{self.max_purchases}) - "
+                                  f"no more purchases available")
+                    else:
+                        next_purchase_num = len(self.purchases) + 1
+                        logger.info(f"Price not low enough for next purchase (#{next_purchase_num}): "
+                                  f"{price_drop_from_last:.2f}% drop (need {required_step:.2f}%)")
+
+                reason_msg = f'Price needs to drop {required_step:.2f}% from last purchase (currently {price_drop_from_last:.2f}%)'
+                if self.max_purchases != -1 and len(self.purchases) >= self.max_purchases:
+                    reason_msg = f'Max purchases reached ({len(self.purchases)}/{self.max_purchases})'
+
                 return {
                     'action': 'hold',
                     'confidence': 0.0,
-                    'reason': f'Price needs to drop {required_step:.2f}% from last purchase (currently {price_drop_from_last:.2f}%)'
+                    'reason': reason_msg
                 }
 
         # Determine if we should buy (majority of indicators agree)

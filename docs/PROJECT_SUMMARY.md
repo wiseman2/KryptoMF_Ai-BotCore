@@ -277,6 +277,14 @@ See [STRATEGY_ENHANCEMENTS.md](STRATEGY_ENHANCEMENTS.md) for comprehensive confi
 - ✅ **Plugin System** - Extensible architecture
 - ✅ **Better Configuration** - YAML-based with examples
 
+## 📋 Planned Features
+
+- 📋 **Cooldown after price drop** - Prevent buying immediately after sharp price drops
+- 📋 **WebSocket support** - Real-time data streaming (waiting for multibot plugin)
+- 📋 **Advanced order types** - OCO, trailing stop-limit
+- 📋 **Portfolio rebalancing** - Multi-asset strategies
+- 📋 **ML signal integration** - Machine learning predictions
+
 ## 🔗 Related Projects
 
 This is part of the **KryptoMF_Ai Ecosystem**:
