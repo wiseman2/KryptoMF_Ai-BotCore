@@ -831,48 +831,63 @@ class AdvancedDCAStrategy(StrategyPlugin):
         total_profit = sale_amount - fee - purchase_cost
         leftover_profit = total_profit - profit_minimum
 
-        # Calculate DCA to add to previous purchase
+        # Get DCA that was previously applied to this purchase
+        dca_previously_applied = sold_purchase.get('dca_applied', 0.0)
+
+        # Calculate DCA to add to previous purchase (only if this is NOT the first purchase)
+        # First purchase (purchase_num == 1) doesn't apply DCA to anyone
         dca_to_add = 0.0
-        if leftover_profit > 0:
+        purchase_num = sold_purchase.get('purchase_num', 1)
+        if purchase_num > 1 and leftover_profit > 0:
             dca_to_add = leftover_profit * self.dca_pool_percent
+
+        # Profit to add to total_profit = total_profit - DCA that was already counted
+        # (DCA was counted when the previous purchase sold)
+        profit_for_stats = total_profit - dca_previously_applied
 
         logger.info("=" * 60)
         logger.info("Advanced DCA Sale Complete")
         logger.info("=" * 60)
+        logger.info(f"  Purchase #{purchase_num}")
         logger.info(f"  Sale revenue: ${sale_amount:,.2f}")
         logger.info(f"  Purchase cost: ${purchase_cost:,.2f}")
         logger.info(f"  Total profit: ${total_profit:,.2f}")
-        logger.info(f"  DCA to apply: ${dca_to_add:,.2f}")
+        if dca_previously_applied > 0:
+            logger.info(f"  DCA previously applied: ${dca_previously_applied:,.2f}")
+            logger.info(f"  Net new profit: ${profit_for_stats:,.2f}")
+        logger.info(f"  DCA to apply to next: ${dca_to_add:,.2f}")
         logger.info("=" * 60)
 
-        self.total_profit += total_profit
+        # Add only the NEW profit (not the DCA that was already counted)
+        self.total_profit += profit_for_stats
 
-        # Track win/loss
-        if total_profit > 0:
+        # Track win/loss based on net new profit
+        if profit_for_stats > 0:
             self.winning_trades += 1
         else:
             self.losing_trades += 1
 
-        # Apply DCA to previous purchase if exists
+        # Apply DCA to previous purchase if exists and this is not the first purchase
         if dca_to_add > 0 and len(self.purchases) > 0:
-            self._apply_dca_to_previous(dca_to_add)
+            self._apply_dca_to_previous(dca_to_add, sold_purchase)
 
         # Save completed purchase to historical file
         self._save_completed_purchase(sold_purchase, total_profit)
     
-    def _apply_dca_to_previous(self, dca_amount: float):
+    def _apply_dca_to_previous(self, dca_amount: float, sold_purchase: Dict[str, Any]):
         """
         Apply DCA profit to the previous purchase to lower its cost basis.
-        
+
         Args:
             dca_amount: Amount of profit to apply
+            sold_purchase: The purchase that just sold (for logging)
         """
         # Apply to the most recent remaining purchase (last in list)
         prev_purchase = self.purchases[-1]
-        
-        logger.info(f"Applying ${dca_amount:,.2f} DCA to previous purchase...")
+
+        logger.info(f"Applying ${dca_amount:,.2f} DCA to purchase #{prev_purchase.get('purchase_num')}...")
         logger.info(f"  Previous cost: ${prev_purchase['cost']:,.2f}")
-        
+
         # Reduce the cost by the DCA amount
         new_cost = prev_purchase['cost'] - dca_amount
 
@@ -885,23 +900,79 @@ class AdvancedDCAStrategy(StrategyPlugin):
         adj_profit = self.min_profit_percent + 0.002  # Add 0.2% buffer
         amount_and_profit = (1 + adj_profit) * (new_cost + total_fees)
         new_sell_price = amount_and_profit / prev_purchase['amount']
-        
+
         logger.info(f"  New cost: ${new_cost:,.2f}")
         logger.info(f"  Old sell price: ${prev_purchase['sell_price']:,.2f}")
         logger.info(f"  New sell price: ${new_sell_price:,.2f}")
-        
+
         # Update the purchase
         prev_purchase['cost'] = new_cost
         prev_purchase['sell_price'] = new_sell_price
         prev_purchase['dca_applied'] += dca_amount
-        
+
         self.total_dca_applied += dca_amount
-        
+
         logger.info(f"✓ DCA applied successfully")
         logger.info(f"  Total DCA applied: ${self.total_dca_applied:,.2f}")
-        
-        # TODO: Cancel and replace the sell order on the exchange with new price
-        # This would require exchange integration
+
+        # Cancel and replace the sell order if it's a trailing order
+        sell_order = prev_purchase.get('sell_order', {})
+        sell_order_status = sell_order.get('status')
+
+        if sell_order_status == 'active' and self.bot:
+            # Get the order type
+            sell_order_type = self.bot.config.get('sell_order_type', 'limit')
+
+            if sell_order_type in ['trailing_market', 'trailing_limit', 'trailing_stop']:
+                logger.info(f"  Canceling existing trailing sell order...")
+
+                try:
+                    # Cancel the existing sell order
+                    order_id = sell_order.get('order_id')
+                    if order_id:
+                        self.bot.exchange.exchange.cancel_order(order_id, self.bot.symbol)
+                        logger.info(f"  ✓ Canceled sell order {order_id}")
+
+                        # Update status
+                        prev_purchase['sell_order']['status'] = 'cancelled'
+
+                        # Place new trailing sell order with updated price
+                        logger.info(f"  Placing new trailing sell order @ ${new_sell_price:,.2f}...")
+
+                        trailing_percent = self.bot.config.get('trailing_sell_percent', 0.25)
+
+                        new_sell_order = self.bot.exchange.place_trailing_order(
+                            symbol=self.bot.symbol,
+                            side='sell',
+                            amount=prev_purchase['amount'],
+                            activation_price=new_sell_price,
+                            trailing_percent=trailing_percent,
+                            order_type=sell_order_type
+                        )
+
+                        # Update purchase with new sell order info
+                        prev_purchase['sell_order'] = {
+                            'status': 'active',
+                            'order_id': new_sell_order.get('id'),
+                            'order_type': sell_order_type,
+                            'activation_price': new_sell_price,
+                            'trailing_percent': trailing_percent,
+                            'placed_timestamp': time.time(),
+                            'order_info': new_sell_order
+                        }
+
+                        logger.info(f"  ✓ New trailing sell order placed: {new_sell_order.get('id')}")
+
+                except Exception as e:
+                    logger.error(f"  Failed to cancel/replace sell order: {e}")
+                    logger.warning(f"  DCA was applied but sell order was not updated!")
+            else:
+                logger.info(f"  Sell order type is {sell_order_type}, no need to cancel/replace")
+        else:
+            if sell_order_status == 'pending':
+                logger.info(f"  Sell order is pending, will use new price when placed")
+            else:
+                logger.info(f"  No active sell order to update")
 
     def _save_completed_purchase(self, purchase: Dict[str, Any], profit: float):
         """
