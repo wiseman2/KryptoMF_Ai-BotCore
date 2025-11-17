@@ -1,5 +1,11 @@
 # KryptoMF_Ai Bot Core -In Developement! May have Bugs... still testing
 
+##  Currently have tested working- 
+#### 1- backtesting
+#### 2- paper trading - Binance.US
+#### 3- live trading - Advanced DCA - Binance.US 
+
+
 ## 🆓 Open Source Trading Bot Engine
 
 The **KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency trading bot engine. Run it from your code editor, configure via YAML files, and monitor via console logs - **no GUI needed**.
