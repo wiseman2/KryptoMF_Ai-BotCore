@@ -57,44 +57,74 @@ With proper fee accounting:
 
 ## Profit Calculation Formula
 
-### Step 1: Calculate Total Cost (Buy + Fee)
+### How KryptoMF Bot Calculates Sell Prices
+
+The bot uses **configured fee percentages** (not actual order fees) to calculate the exact sell price needed to achieve your profit target after all fees.
+
+### Step 1: Calculate Fees Based on Cost
 
 ```
-total_cost = buy_price × (1 + maker_fee%)
-```
-
-**Example:**
-- Buy price: $50,000
-- Maker fee: 0.1%
-- Total cost: $50,000 × 1.001 = **$50,050**
-
-### Step 2: Add Desired Profit
-
-```
-target_with_profit = total_cost × (1 + profit_target%)
+buy_fee = cost × maker_fee%
+sell_fee_estimate = cost × taker_fee%
+total_fees = buy_fee + sell_fee_estimate
 ```
 
 **Example:**
-- Total cost: $50,050
-- Profit target: 1.0%
-- Target with profit: $50,050 × 1.01 = **$50,550.50**
+- Cost: $5.53
+- Maker fee: 0.4% (0.004)
+- Taker fee: 0.4% (0.004)
+- Buy fee: $5.53 × 0.004 = $0.0221
+- Sell fee: $5.53 × 0.004 = $0.0221
+- Total fees: **$0.0442**
 
-### Step 3: Account for Sell Fee
+### Step 2: Calculate Base Price with Fees
 
 ```
-sell_price = target_with_profit / (1 - taker_fee%)
+base_price_per_unit = (cost + total_fees) / amount
 ```
 
 **Example:**
-- Target with profit: $50,550.50
-- Taker fee: 0.1%
-- Sell price: $50,550.50 / 0.999 = **$50,601.05**
+- Cost + fees: $5.53 + $0.0442 = $5.5742
+- Amount: 0.008 BTC
+- Base price: $5.5742 / 0.008 = **$696.78 per BTC**
+
+### Step 3: Add Profit Target and Buffer
+
+```
+sell_price = base_price_per_unit × (1 + profit_target% + buffer%)
+```
+
+**Example:**
+- Base price: $696.78
+- Profit target: 1.0% (0.01)
+- Buffer: 0.2% (0.002) - safety margin
+- Sell price: $696.78 × 1.012 = **$705.14**
 
 ### Complete Formula
 
 ```python
-sell_price = (buy_price × (1 + maker_fee%) × (1 + profit_target%)) / (1 - taker_fee%)
+# Calculate fees
+buy_fee = cost * maker_fee
+sell_fee_estimate = cost * taker_fee
+total_fees = buy_fee + sell_fee_estimate
+
+# Calculate sell price
+sell_price = ((cost + total_fees) / amount) * (1 + profit_target + 0.002)
 ```
+
+### Why This Approach?
+
+**✅ Advantages:**
+- Uses configured fee percentages (reliable and consistent)
+- Accounts for both buy and sell fees upfront
+- Includes safety buffer to ensure profit target is met
+- Works even when exchange doesn't return fee information
+
+**❌ Why Not Use Order Response Fees:**
+- Exchange may return `None` for fee field
+- Actual fee is in dollars, not percentage
+- Can't estimate sell fee before selling
+- Inconsistent across exchanges
 
 ---
 
@@ -131,56 +161,115 @@ Minimum profit target (%) [1.0]: 1.0
 ### YAML Configuration
 
 ```yaml
-# Trading fees
+# Trading fees (REQUIRED for accurate profit calculations)
 fees:
-  maker: 0.1  # Maker fee percentage
-  taker: 0.1  # Taker fee percentage
+  maker: 0.4  # Maker fee percentage (limit orders)
+  taker: 0.4  # Taker fee percentage (market orders)
 
 # Profit target (after fees)
-profit_target: 1.0  # 1.0% net profit
+profit_target: 1.0  # 1.0% net profit after all fees
+
+# Advanced DCA can also use min_profit_percent in strategy_params
+strategy_params:
+  min_profit_percent: 1.0  # Takes precedence over profit_target if set
 ```
+
+### Important Notes
+
+**✅ Always Configure Fees:**
+- The bot uses these percentages to calculate sell prices
+- NOT the actual fees from order responses
+- Ensures consistent and accurate calculations
+- Works even when exchange doesn't return fee information
+
+**✅ Fee Configuration is Read by:**
+- Advanced DCA strategy (`advanced_dca.py`)
+- Regular DCA strategy (`dca.py`)
+- All strategies that calculate profit targets
+
+**✅ Profit Target Priority (Advanced DCA):**
+1. `strategy_params.min_profit_percent` (if set)
+2. `profit_target` (root config)
+3. Default: 0.5%
+
+**❌ Common Mistakes:**
+- Setting fees too low → Sell prices won't cover actual fees → Losses
+- Setting fees too high → Sell prices too high → Orders don't fill
+- Not setting fees → Uses defaults (0.1%) which may be wrong for your exchange
 
 ---
 
 ## Examples
 
-### Example 1: Binance.US (0.1% fees, 1% profit target)
+### Example 1: Binance.US (0.4% fees, 1% profit target)
 
-**Buy:**
-- Price: $50,000
-- Fee: $50 (0.1%)
-- **Total cost: $50,050**
+**Buy Order:**
+- Price: $690.98 per ZEC
+- Amount: 0.008 ZEC
+- Cost: $5.53
 
-**Sell:**
-- Target profit: 1% of $50,050 = $500.50
-- Target price: $50,550.50
-- Fee: $50.55 (0.1%)
-- **Sell price: $50,601.05**
+**Fee Calculation:**
+- Buy fee: $5.53 × 0.004 = $0.0221
+- Sell fee estimate: $5.53 × 0.004 = $0.0221
+- Total fees: $0.0442
+
+**Sell Price Calculation:**
+- Base: ($5.53 + $0.0442) / 0.008 = $696.78 per ZEC
+- With profit + buffer: $696.78 × (1 + 0.01 + 0.002) = **$705.14**
 
 **Result:**
-- Proceeds: $50,601.05 - $50.55 = $50,550.50
-- Profit: $50,550.50 - $50,050 = $500.50
-- **Profit %: 1.0% ✓**
+- Buy at: $690.98
+- Sell at: $705.14
+- Increase: 2.05% (covers 0.8% fees + 1% profit + 0.2% buffer)
+- **Net profit: 1.0% ✓**
 
 ### Example 2: Coinbase Pro (0.5% fees, 2% profit target)
 
-**Buy:**
+**Buy Order:**
 - Price: $50,000
-- Fee: $250 (0.5%)
-- **Total cost: $50,250**
+- Amount: 1 BTC
+- Cost: $50,000
 
-**Sell:**
-- Target profit: 2% of $50,250 = $1,005
-- Target price: $51,255
-- Fee: $256.28 (0.5%)
-- **Sell price: $51,511.28**
+**Fee Calculation:**
+- Buy fee: $50,000 × 0.005 = $250
+- Sell fee estimate: $50,000 × 0.005 = $250
+- Total fees: $500
+
+**Sell Price Calculation:**
+- Base: ($50,000 + $500) / 1 = $50,500
+- With profit + buffer: $50,500 × (1 + 0.02 + 0.002) = **$51,601**
+
+**Result:**
+- Buy at: $50,000
+- Sell at: $51,601
+- Increase: 3.2% (covers 1.0% fees + 2% profit + 0.2% buffer)
+- **Net profit: 2.0% ✓**
 
 **Result:**
 - Proceeds: $51,511.28 - $257.56 = $51,253.72
 - Profit: $51,253.72 - $50,250 = $1,003.72
 - **Profit %: 2.0% ✓**
 
-### Example 3: High Fees Impact
+### Example 3: DCA Application with Fee Recalculation
+
+When DCA is applied to reduce cost basis, fees are recalculated based on the new cost:
+
+**Initial Purchase:**
+- Cost: $50,000
+- Fees (0.4% × 2): $400
+- Sell price: ($50,000 + $400) / 1 × 1.012 = $50,804.80
+
+**After DCA Applied ($520 reduction):**
+- New cost: $49,480
+- Fees recalculated (0.4% × 2): $395.84
+- New sell price: ($49,480 + $395.84) / 1 × 1.012 = $50,478.39
+
+**Result:**
+- Sell price reduced by $326.41
+- Easier to sell at profit
+- If trailing order exists, it's cancelled and replaced with new price
+
+### Example 4: High Fees Impact
 
 **Scenario A: No fee accounting**
 - Buy at $50,000

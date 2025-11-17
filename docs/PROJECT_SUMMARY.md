@@ -31,19 +31,30 @@ The open-source core is intentionally feature-complete to provide real value to 
 Based on the original KryptoMFG multibot implementation, this strategy applies profit from subsequent sales to reduce the cost basis of previous purchases.
 
 **How it works:**
-- Buy #1: 1 BTC @ $50,000 (cost: $50,000)
+- Buy #1: 1 BTC @ $50,000 (cost: $50,000) - First purchase, no DCA applied
 - Buy #2: 1 BTC @ $48,000 (cost: $48,000)
 - Sell #2: 1 BTC @ $49,000 (profit: $1,000)
-- After min profit threshold (0.5% = $240), remaining profit ($760) is applied to Buy #1
-- Buy #1 new cost: $49,240 (instead of $50,000)
-- Buy #1 new sell price: $49,732 (instead of $50,500)
+- After min profit threshold (1% = $480), remaining profit ($520) is applied to Buy #1
+- Buy #1 new cost: $49,480 (reduced from $50,000)
+- Buy #1 fees recalculated based on new cost
+- Buy #1 new sell price: Recalculated with new cost + fees + profit target
+- If Buy #1 has a trailing sell order, it's automatically cancelled and replaced with new price
 
 This makes earlier purchases easier to sell at profit and allows for continuous accumulation.
 
+**Key Features:**
+- ✅ **Fee-Aware**: Uses configured maker/taker fee percentages for accurate calculations
+- ✅ **First Purchase Exception**: Purchase #1 never applies DCA (no previous purchase)
+- ✅ **Trailing Order Management**: Cancels and replaces trailing orders when DCA is applied
+- ✅ **Double-Counting Prevention**: Subtracts previously applied DCA from profit stats
+- ✅ **Progressive Step-Down**: Requires progressively lower prices to prevent clustering
+
 **Configuration:**
-- `min_profit_percent`: Minimum profit before applying DCA (default: 0.5%)
+- `min_profit_percent`: Minimum profit before applying DCA (default: 0.5%, or uses `profit_target` from root config)
 - `dca_pool_percent`: Percentage of excess profit to apply (default: 100%)
 - `max_purchases`: Maximum number of active purchases (default: -1 for unlimited)
+- `step_down_multiplier`: Multiplier for progressive step-down (default: 1.5)
+- `max_step_down`: Maximum step-down percentage (default: 5.0%)
 
 #### 2. Enhanced DCA with Indicators
 Instead of time-based buying, this strategy uses technical indicators to identify optimal entry points.

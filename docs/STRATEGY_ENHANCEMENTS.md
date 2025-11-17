@@ -21,27 +21,52 @@ The following enhancements have been implemented:
 Implements the advanced DCA logic from the original multibot where profit from selling a subsequent purchase is applied to reduce the cost basis of previous purchases.
 
 ### Key Features
-- **Profit Application Logic**: When a purchase is sold at a profit, the excess profit (after minimum profit threshold) is applied to the previous purchase
+- **Profit Application Logic**: When purchase #2+ is sold at a profit, the excess profit (after minimum profit threshold) is applied to the previous purchase
+- **First Purchase Exception**: Purchase #1 never applies DCA (no previous purchase to apply to)
 - **Cost Basis Reduction**: Lowers the average cost of earlier purchases, making them easier to sell at profit
+- **Fee-Aware Calculations**: Uses configured maker/taker fee percentages (not order response fees) for accurate profit calculations
+- **Trailing Order Management**: Automatically cancels and replaces trailing sell orders when DCA is applied
+- **Double-Counting Prevention**: Subtracts previously applied DCA from profit stats to avoid counting the same profit twice
 - **Indicator-Based Buying**: Uses configurable technical indicators instead of time-based intervals
+- **Progressive Step-Down**: Requires progressively lower prices for each additional purchase to prevent clustering
 - **Pending Buy Order Tracking**: Prevents multiple simultaneous buy orders while waiting for trailing orders to fill
-- **Comprehensive Purchase Records**: Stores complete buy/sell order info, fees, timestamps, profit
+- **Comprehensive Purchase Records**: Stores complete buy/sell order info, fees, timestamps, profit, DCA applied
 - **Historical Trade Logging**: Completed trades saved to JSONL files for review and analysis
 - **Configurable Parameters**:
-  - `min_profit_percent`: Minimum profit before applying DCA (default: 0.5%)
+  - `min_profit_percent`: Minimum profit before applying DCA (default: 0.5%, or uses `profit_target` from root config)
   - `dca_pool_percent`: Percentage of excess profit to apply (default: 100%)
   - `max_purchases`: Maximum number of active purchases (default: -1 for unlimited)
   - `indicator_agreement`: Percentage of indicators that must agree (default: 0.6 = 60%)
+  - `step_down_multiplier`: Multiplier for progressive step-down (default: 1.5)
+  - `max_step_down`: Maximum step-down percentage (default: 5.0%)
 
 ### Example
 ```
-Buy #1: 1 BTC @ $50,000 (cost: $50,000)
+Buy #1: 1 BEC @ $50,000 (cost: $50,000)
 Buy #2: 1 BTC @ $48,000 (cost: $48,000)
 Sell #2: 1 BTC @ $49,000 (profit: $1,000)
 
-After min profit (0.5% = $240), remaining profit ($760) applied to Buy #1:
-Buy #1 new cost: $50,000 - $760 = $49,240
-Buy #1 new sell price: $49,732 (instead of $50,500)
+After min profit (1% = $480), remaining profit ($520) applied to Buy #1:
+Buy #1 new cost: $50,000 - $520 = $49,480
+Buy #1 fees recalculated: $49,480 × 0.004 × 2 = $0.396
+Buy #1 new sell price: (($49,480 + $0.396) / 1) × 1.012 = $50,115
+
+If Buy #1 had a trailing sell order:
+- Old trailing order cancelled
+- New trailing order placed at $50,115
+```
+
+### DCA Profit Tracking
+```
+Purchase #1 sells: Profit = $1,000, DCA applied = $0 (first purchase)
+  → Add $1,000 to total_profit
+
+Purchase #2 sells: Profit = $1,200, DCA applied to it = $520
+  → Add $1,200 - $520 = $680 to total_profit (avoid double-counting)
+  → Apply $680 × pool% to Purchase #3
+
+Total profit = $1,000 + $680 = $1,680 ✓ (correct)
+Without fix = $1,000 + $1,200 = $2,200 ✗ (double-counted $520)
 ```
 
 ### Based On

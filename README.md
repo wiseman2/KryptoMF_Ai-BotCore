@@ -184,15 +184,24 @@ The bot includes comprehensive fee management to ensure accurate profit calculat
 
 ### Fee-Aware Profit Calculation
 
-The bot automatically accounts for both buy and sell fees when calculating target sell prices:
+The bot automatically accounts for both buy and sell fees when calculating target sell prices using **configured fee percentages** (not actual order fees):
 
 ```
-Example: Buy BTC at $50,000 with 0.1% fees, 1% profit target
-1. Buy cost with fee: $50,000 × 1.001 = $50,050
-2. Add profit target: $50,050 × 1.01 = $50,550.50
-3. Account for sell fee: $50,550.50 / 0.999 = $50,601.05
-Result: Sell at $50,601.05 for exactly 1% profit after all fees
+Example: Buy at $690.98 with 0.4% fees, 1% profit target
+1. Buy cost: $5.53
+2. Buy fee (0.4%): $5.53 × 0.004 = $0.022
+3. Sell fee estimate (0.4%): $5.53 × 0.004 = $0.022
+4. Total fees: $0.044
+5. Base with fees: ($5.53 + $0.044) / amount = $696.80 per unit
+6. With profit + buffer: $696.80 × (1 + 0.01 + 0.002) = $705.16
+Result: Sell at $705.16 for exactly 1% profit after all fees (2.05% above buy price)
 ```
+
+**Key Features:**
+- ✅ Uses configured maker/taker fee percentages (not order response fees)
+- ✅ Accounts for both buy and sell fees in advance
+- ✅ Adds 0.2% safety buffer to ensure profit target is met
+- ✅ Recalculates fees when DCA is applied to reduce cost basis
 
 ### Order Types
 
@@ -436,23 +445,32 @@ The advanced DCA strategy applies profit from subsequent sales to reduce the cos
 
 **Profit Application Example:**
 ```
-Buy #1: 1 BTC @ $50,000
-Buy #2: 1 BTC @ $48,000
+Buy #1: 1 BTC @ $50,000 (cost: $50,000)
+Buy #2: 1 BTC @ $48,000 (cost: $48,000)
 Sell #2: 1 BTC @ $49,000 (profit: $1,000)
 
-After applying profit to Buy #1:
-Buy #1 new cost: $49,240 (reduced from $50,000)
+After min profit (1% = $480), remaining profit ($520) applied to Buy #1:
+Buy #1 new cost: $50,000 - $520 = $49,480
+Buy #1 new sell price: Recalculated with new cost + fees + profit target
+
+If Buy #1 had a trailing sell order, it's automatically cancelled and replaced with new price
 ```
 
-**Progressive Step-Down Example (0.5% profit target):**
+**DCA Logic:**
+- ✅ **First purchase never applies DCA** - No previous purchase to apply to
+- ✅ **Subsequent purchases apply DCA** - Profit from purchase #2+ reduces cost of previous purchase
+- ✅ **Avoids double-counting** - DCA already counted in previous sale is subtracted from total profit
+- ✅ **Trailing order management** - Automatically cancels and replaces trailing sell orders when DCA is applied
+
+**Progressive Step-Down Example (1% profit target):**
 ```
 Purchase 1: $50,000 (no requirement)
-Purchase 2: $49,750 or lower (0.5% drop required)
-Purchase 3: $49,377 or lower (0.75% drop from #2)
-Purchase 4: $48,823 or lower (1.125% drop from #3)
-Purchase 5: $48,000 or lower (1.6875% drop from #4)
+Purchase 2: $49,500 or lower (1.0% drop required)
+Purchase 3: $48,758 or lower (1.5% drop from #2)
+Purchase 4: $47,657 or lower (2.25% drop from #3)
+Purchase 5: $46,270 or lower (3.375% drop from #4, capped at 5% max)
 ...
-Purchase 10: ~$42,500 or lower (covers ~15% range)
+Purchase 10: Covers ~15-20% price range
 ```
 
 This prevents buying multiple times at similar prices and ensures you're dollar-cost averaging across a meaningful price range.
@@ -580,8 +598,8 @@ python cli.py --config <file> --verbose          # Verbose logging
 
 ## 🛠️ Development Status
 
-**Current Version:** 0.3.0 (Beta)
-**Last Updated:** 2025-11-03
+**Current Version:** 0.4.1 (Beta)
+**Last Updated:** 2025-11-17
 
 ### Completed Features ✅
 - ✅ Core bot engine with multi-exchange support

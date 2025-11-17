@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2025-11-17
+
+### Fixed - Fee Calculation & DCA Logic
+
+#### Critical Fee Calculation Fixes
+- **Fee configuration reading** - Advanced DCA now reads `fees.maker` and `fees.taker` from config
+- **Percentage-based fee calculation** - Uses configured fee percentages instead of order response fees
+- **Accurate sell price calculation** - Calculates fees as `cost × fee_percentage` for both buy and sell
+- **Fee recalculation on DCA** - When DCA is applied, fees are recalculated based on new reduced cost
+- **Profit target priority** - Advanced DCA checks `strategy_params.min_profit_percent` first, then `profit_target` from root config
+- **Safety buffer** - Adds 0.2% buffer to ensure profit target is met even with price fluctuations
+
+**Before Fix:**
+```
+Buy at $690.98, sell at $692.84 = 0.27% increase (NOT ENOUGH to cover fees + profit!)
+```
+
+**After Fix:**
+```
+Buy at $690.98, sell at $705.16 = 2.05% increase (covers 0.8% fees + 1% profit + 0.2% buffer)
+```
+
+#### DCA Logic Fixes
+- **First purchase exception** - Purchase #1 never applies DCA (no previous purchase to apply to)
+- **Double-counting prevention** - Subtracts previously applied DCA from profit stats to avoid counting same profit twice
+- **Trailing order management** - Automatically cancels and replaces trailing sell orders when DCA is applied
+- **Accurate profit tracking** - Only counts net new profit in total_profit (excludes DCA already counted)
+
+**DCA Profit Tracking Example:**
+```
+Purchase #1 sells: Profit = $1,000, DCA applied = $0 (first purchase)
+  → Add $1,000 to total_profit
+
+Purchase #2 sells: Profit = $1,200, DCA previously applied to it = $520
+  → Add $1,200 - $520 = $680 to total_profit (avoid double-counting)
+  → Apply $680 × pool% to Purchase #3
+
+Total profit = $1,000 + $680 = $1,680 ✓ (correct)
+Without fix = $1,000 + $1,200 = $2,200 ✗ (double-counted $520)
+```
+
+#### Win Rate Calculation Fix
+- **Only completed trades** - Win rate now only counts trades where both buy AND sell orders are filled
+- **Excludes open positions** - Open positions are not counted as wins or losses
+- **Accurate statistics** - `total_trades = winning_trades + losing_trades` (calculated dynamically)
+
+### Changed
+- **Fee calculation method** - Now uses configured percentages instead of order response fees
+- **DCA application logic** - Only applies starting from purchase #2
+- **Profit statistics** - Accounts for previously applied DCA to avoid double-counting
+
 ## [0.4.0] - 2025-11-16
 
 ### Added - Trailing Orders & Pending Order Tracking
