@@ -139,17 +139,19 @@ class StatusDisplay:
     def display_trades(self, stats: Dict[str, Any]):
         """
         Display trade statistics.
-        
+
         Args:
             stats: Statistics dictionary from BotInstance
         """
         print(f"\n{Fore.CYAN}═══ TRADES ═══{Style.RESET_ALL}")
-        
-        total_trades = stats.get('total_trades', 0)
+
         winning_trades = stats.get('winning_trades', 0)
         losing_trades = stats.get('losing_trades', 0)
-        
-        # Win rate
+
+        # Total trades = only completed trades (both buy AND sell filled)
+        total_trades = winning_trades + losing_trades
+
+        # Win rate (only calculated from completed trades)
         if total_trades > 0:
             win_rate = (winning_trades / total_trades) * 100
             if win_rate >= 60:
@@ -161,7 +163,7 @@ class StatusDisplay:
         else:
             win_rate = 0
             win_rate_color = Fore.YELLOW
-        
+
         print(f"Total Trades: {Fore.CYAN}{total_trades}{Style.RESET_ALL}")
         print(f"Winning: {Fore.GREEN}{winning_trades}{Style.RESET_ALL}  |  "
               f"Losing: {Fore.RED}{losing_trades}{Style.RESET_ALL}")
@@ -227,10 +229,14 @@ class StatusDisplay:
         # Build status line
         last_price = stats.get('last_price', 0)
         total_profit = stats.get('total_profit', 0)
-        total_trades = stats.get('total_trades', 0)
-        
+
+        # Total trades = only completed trades (both buy AND sell filled)
+        winning_trades = stats.get('winning_trades', 0)
+        losing_trades = stats.get('losing_trades', 0)
+        total_trades = winning_trades + losing_trades
+
         profit_color = Fore.GREEN if total_profit > 0 else Fore.RED if total_profit < 0 else Fore.YELLOW
-        
+
         status_line = (
             f"{status_icon} "
             f"Price: {Fore.CYAN}${last_price:,.2f}{Style.RESET_ALL} | "

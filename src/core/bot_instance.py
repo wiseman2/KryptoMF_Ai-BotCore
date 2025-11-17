@@ -64,8 +64,8 @@ class BotInstance:
         self.strategy = None
         
         # Statistics
+        # Note: total_trades is calculated as winning_trades + losing_trades (completed trades only)
         self.stats = {
-            'total_trades': 0,
             'winning_trades': 0,
             'losing_trades': 0,
             'total_profit': 0.0,
@@ -701,9 +701,6 @@ class BotInstance:
 
             logger.info(f"[{self.name}] ✓ Buy order: {order.get('id')}")
 
-            # Update stats
-            self.stats['total_trades'] += 1
-
             # Notify strategy based on order status
             if order.get('status') == 'closed':
                 # Order filled immediately (market order or instant fill)
@@ -772,9 +769,6 @@ class BotInstance:
                 )
 
             logger.info(f"[{self.name}] ✓ Sell order: {order.get('id')}")
-
-            # Update stats
-            self.stats['total_trades'] += 1
 
             # Notify strategy
             if order.get('status') == 'closed':

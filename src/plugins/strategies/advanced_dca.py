@@ -69,7 +69,13 @@ class AdvancedDCAStrategy(StrategyPlugin):
         
         # Strategy parameters
         self.amount_usd = self.params.get('amount_usd', 100)
-        self.min_profit_percent = self.params.get('min_profit_percent', 0.5) / 100  # Convert to decimal
+
+        # Profit target - check strategy_params first, then root config, then default
+        if 'min_profit_percent' in self.params:
+            self.min_profit_percent = self.params.get('min_profit_percent') / 100  # Convert to decimal
+        else:
+            self.min_profit_percent = config.get('profit_target', 0.5) / 100  # Convert to decimal
+
         self.dca_pool_percent = self.params.get('dca_pool_percent', 100) / 100  # Convert to decimal
         self.max_purchases = self.params.get('max_purchases', -1)  # -1 = unlimited (default)
 
@@ -142,6 +148,11 @@ class AdvancedDCAStrategy(StrategyPlugin):
 
         # Indicator agreement threshold (percentage of indicators that must agree)
         self.indicator_agreement = self.params.get('indicator_agreement', 0.6)  # Default 60%
+
+        # Trading fees (from config) - convert from percentage to decimal
+        fees = config.get('fees', {})
+        self.maker_fee = fees.get('maker', 0.1) / 100  # Default 0.1% -> 0.001
+        self.taker_fee = fees.get('taker', 0.1) / 100  # Default 0.1% -> 0.001
 
         # State - list of active purchases
         self.purchases = []  # List of purchase dicts with cost, amount, sell_price, dca_applied
@@ -461,12 +472,15 @@ class AdvancedDCAStrategy(StrategyPlugin):
         amount = order.get('filled', 0)
         price = order.get('price', 0)
 
-        # Get fee - if None or missing, use 0 (some pairs have no fees)
-        fee_info = order.get('fee')
-        fee = float((fee_info.get('cost', 0) if fee_info else 0) * 2)  # 2x fees (buy + sell)
+        # Calculate fees based on configured percentages (not from order response)
+        # Buy fee (already paid) + estimated sell fee
+        buy_fee = cost * self.maker_fee  # Assuming limit order (maker fee)
+        sell_fee_estimate = cost * self.taker_fee  # Estimate for sell
+        total_fees = buy_fee + sell_fee_estimate
 
-        # Sell price = (cost + fees) * (1 + min_profit)
-        sell_price = ((cost + fee) / amount) * (1 + self.min_profit_percent + 0.002)  # Add 0.2% buffer
+        # Sell price = (cost + fees) / amount * (1 + min_profit + buffer)
+        # This ensures we cover: original cost + both fees + minimum profit
+        sell_price = ((cost + total_fees) / amount) * (1 + self.min_profit_percent + 0.002)  # Add 0.2% buffer
 
         # Create comprehensive purchase record with all necessary information for state restoration
         purchase = {
@@ -480,8 +494,8 @@ class AdvancedDCAStrategy(StrategyPlugin):
             'amount': amount,
             'price': price,  # Average fill price
             'cost': cost,  # Total cost (amount * price)
-            'fee': fee,
-            'fee_currency': fee_info.get('currency') if fee_info else None,
+            'fee': total_fees,  # Total estimated fees (buy + sell)
+            'fee_currency': 'USDT',  # Assuming quote currency
 
             # Timestamps
             'timestamp': time.time(),
@@ -861,10 +875,15 @@ class AdvancedDCAStrategy(StrategyPlugin):
         
         # Reduce the cost by the DCA amount
         new_cost = prev_purchase['cost'] - dca_amount
-        
+
+        # Recalculate fees for the new cost
+        buy_fee = new_cost * self.maker_fee
+        sell_fee_estimate = new_cost * self.taker_fee
+        total_fees = buy_fee + sell_fee_estimate
+
         # Recalculate sell price based on new cost
         adj_profit = self.min_profit_percent + 0.002  # Add 0.2% buffer
-        amount_and_profit = (1 + adj_profit) * (new_cost + (2 * prev_purchase['fee']))
+        amount_and_profit = (1 + adj_profit) * (new_cost + total_fees)
         new_sell_price = amount_and_profit / prev_purchase['amount']
         
         logger.info(f"  New cost: ${new_cost:,.2f}")
