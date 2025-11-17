@@ -31,10 +31,14 @@ The **KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency t
 - ✅ **Advanced DCA** - Profit application from subsequent sales to reduce cost basis
 - ✅ **Progressive Step-Down** - Each purchase requires progressively lower price (prevents clustering)
 - ✅ **Enhanced DCA** - Indicator-based buying instead of time-based intervals
-- ✅ **Trailing Orders** - Exchange-native trailing orders (Binance/Binance.US)
-- ✅ **Technical Indicators** - RSI, MACD, EMA, Stochastic RSI, MFI, and more
+- ✅ **Trailing Orders** - Exchange-native trailing stop orders (Binance/Binance.US)
+- ✅ **Pending Order Tracking** - Prevents multiple simultaneous buy orders while waiting for trailing orders to fill
+- ✅ **Technical Indicators** - RSI, MACD, EMA, Stochastic RSI, MFI, Price Drop, Price Rising
+- ✅ **Indicator Agreement** - Configurable threshold (e.g., 60%) of indicators must agree before buying
+- ✅ **Fully Configurable Indicators** - All indicator parameters (periods, thresholds, etc.) configurable from YAML
 - ✅ **RSI Rising Check** - Wait for momentum reversal before buying (optional)
-- ✅ **Configurable Everything** - Select indicators, adjust thresholds, customize strategies
+- ✅ **MACD Rising Check** - Confirm upward momentum before entry (optional)
+- ✅ **1-Minute Candles** - Uses 1m timeframe for responsive indicator calculations
 
 ### Trading Fees & Profit Management
 - ✅ **Fee-Aware Calculations** - Accounts for maker and taker fees in all profit calculations
@@ -43,9 +47,14 @@ The **KryptoMF_Ai Bot Core** is a fully functional, open-source cryptocurrency t
 - ✅ **Configurable Trailing** - Set trailing percentages for buys and sells (e.g., 0.25% for 0.5-1% profit targets)
 - ✅ **Transparent Logging** - Shows all fees, target prices, and expected profits
 
-### Reliability & State Management (NEW!)
+### Reliability & State Management
 - ✅ **State Persistence** - Saves bot state to disk after every trade (no data loss on crashes)
-- ✅ **Pending Order Tracking** - Tracks pending sell orders with purchase info for matching
+- ✅ **Pending Buy Order Tracking** - Prevents multiple simultaneous buy orders while waiting for fills
+- ✅ **Pending Sell Order Tracking** - Tracks sell orders within each purchase object with status tracking
+- ✅ **Comprehensive Purchase Records** - Stores complete buy/sell order info, fees, timestamps, profit
+- ✅ **Historical Trade Logging** - Completed trades saved to JSONL files for review and analysis
+- ✅ **Automatic State Discovery** - Finds latest state file matching exchange + symbol + strategy
+- ✅ **State File Cleanup** - Keeps only N most recent state files, auto-deletes old ones
 - ✅ **Connectivity Monitoring** - Periodic internet checks with exponential backoff on failures
 - ✅ **Trailing State Management** - Full bot-managed trailing with watermark tracking
 - ✅ **Smart Indicator Checks** - Caches OHLCV data and skips checks when price hasn't moved
@@ -188,31 +197,75 @@ Choose from multiple order types for buying and selling:
 - **Trailing Market/Limit** - Follow price movement with percentage offset
 - **Trailing Stop** - Protect profits by trailing price upward
 
-### Trailing Configuration
+### Trailing Orders Configuration
 
-For small profit targets (0.5-1%), use tight trailing percentages:
-
-```yaml
-profit_target: 1.0  # 1% profit after fees
-buy_order_type: limit
-sell_order_type: trailing_market
-trailing_sell_percent: 0.25  # Sell when price drops 0.25% from peak
-```
-
-### RSI Rising Check
-
-Optionally wait for RSI momentum reversal before buying:
+The bot supports exchange-native trailing stop orders on Binance/Binance.US:
 
 ```yaml
-indicators:
-  rsi:
-    enabled: true
-    period: 14
-    oversold: 30
-    check_rising: true  # Wait for RSI to reverse before buying
+# Trailing buy orders (trails down to buy at lower price)
+buy_order_type: trailing_market  # or trailing_limit
+trailing_buy_percent: 0.3  # 0.3% trailing distance
+
+# Trailing sell orders (trails up to sell at higher price)
+sell_order_type: trailing_market  # or trailing_limit
+trailing_sell_percent: 0.3  # 0.3% trailing distance
 ```
 
-This helps avoid "catching a falling knife" by ensuring the downtrend is reversing before entering a position.
+**How Trailing Orders Work:**
+- **Buy Orders**: Use `STOP_LOSS_LIMIT` type, trail price DOWN to buy at lower price
+- **Sell Orders**: Use `TAKE_PROFIT_LIMIT` type, trail price UP to sell at higher price
+- **Pending Order Tracking**: Bot tracks pending trailing orders to prevent placing multiple simultaneous orders
+- **Automatic Fill Detection**: When order fills, bot automatically places corresponding sell order
+
+### Indicator Configuration
+
+All indicators are fully configurable with custom periods and thresholds:
+
+```yaml
+strategy_params:
+  indicator_agreement: 0.6  # 60% of indicators must agree before buying
+
+  indicators:
+    price_drop:
+      enabled: false
+      drop_percent: 1.0
+      lookback_candles: 24
+
+    rising_price:
+      enabled: true  # Only buy when price is rising
+
+    rsi:
+      enabled: true
+      period: 14
+      oversold: 35
+      overbought: 55
+      check_rising: true  # Wait for RSI to reverse before buying
+
+    stoch_rsi:
+      enabled: true
+      period: 14
+      smoothing: 3
+      oversold: 33
+      overbought: 80
+
+    ema:
+      enabled: true
+      length: 25  # Buy when price is below EMA
+
+    macd:
+      enabled: true
+      fast: 12
+      slow: 26
+      signal: 9
+      check_rising: true  # Wait for MACD to turn up
+
+    mfi:
+      enabled: true
+      period: 14
+      oversold: 25
+```
+
+**Indicator Agreement**: Set the percentage of enabled indicators that must agree before placing a buy order. For example, with `indicator_agreement: 0.6` and 5 indicators enabled, at least 3 must give buy signals.
 
 See **[Fees and Profit Calculation Guide](docs/FEES_AND_PROFIT_CALCULATION.md)** for detailed explanations and examples.
 

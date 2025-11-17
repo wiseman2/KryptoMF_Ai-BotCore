@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-11-16
+
+### Added - Trailing Orders & Pending Order Tracking
+
+#### Binance/Binance.US Trailing Order Support
+- **Exchange-native trailing orders** - Implemented correct Binance US API format for trailing orders
+- **STOP_LOSS_LIMIT for buys** - Buy orders use `STOP_LOSS_LIMIT` type to trail price down
+- **TAKE_PROFIT_LIMIT for sells** - Sell orders use `TAKE_PROFIT_LIMIT` type to trail price up
+- **Trailing delta in BIPS** - Trailing distance specified in basis points (100 BIPS = 1%)
+- **Automatic conversion** - Bot converts percentage (e.g., 0.3%) to BIPS (30) automatically
+- **Activation price support** - Optional activation price for trailing orders
+- **GTC time in force** - Orders use Good Till Cancel time in force
+
+#### Pending Buy Order Tracking
+- **Prevents multiple orders** - Tracks pending buy orders to prevent placing multiple simultaneous orders
+- **on_buy_order_placed() method** - New strategy method called when order is placed but not filled
+- **pending_buy_orders list** - Maintains list of pending buy order IDs
+- **Hold signal while pending** - Strategy returns 'hold' signal while pending buy orders exist
+- **Automatic removal on fill** - Order removed from pending list when it fills
+- **State persistence** - Pending buy orders saved to state file and restored on restart
+- **Crash protection** - Prevents duplicate orders after bot restarts
+
+#### Comprehensive Purchase Records
+- **Complete buy order info** - Stores order ID, price, amount, cost, fee, timestamp, complete order details
+- **Complete sell order info** - Stores order ID, price, amount, fee, timestamp, complete order details
+- **Purchase metadata** - Tracks cost basis, DCA applied, profit/loss for each purchase
+- **Sell order status tracking** - Tracks sell order status within each purchase object
+- **Historical trade logging** - Completed trades saved to JSONL files for review and analysis
+
+#### Fully Configurable Indicators
+- **All parameters configurable** - Every indicator parameter can be set in YAML config
+- **RSI configuration** - Period, oversold/overbought levels, check_rising option
+- **MACD configuration** - Fast, slow, signal periods, check_rising option
+- **Stochastic RSI configuration** - Period, smoothing, oversold/overbought levels
+- **MFI configuration** - Period, oversold level
+- **EMA configuration** - Length/period
+- **Price drop configuration** - Drop percentage, lookback candles
+- **Price rising detection** - Checks if price is rising in last 3 candles
+- **Indicator agreement threshold** - Configurable percentage of indicators that must agree (e.g., 0.6 = 60%)
+
+#### 1-Minute Candles
+- **Changed default timeframe** - Changed from 5-minute to 1-minute candles for more responsive indicators
+- **Faster signal detection** - Indicators update every minute instead of every 5 minutes
+- **More accurate trailing** - Better price tracking for trailing orders
+
+### Changed - 2025-11-16
+
+#### Advanced DCA Strategy
+- **Pending buy order tracking** - Added `pending_buy_orders` list to track pending orders
+- **Priority reordering** - Check for pending orders before checking max purchases
+- **Indicator parameter reading** - Reads all indicator parameters from nested config structure
+- **State persistence** - Saves and restores pending buy orders
+- **Logging improvements** - Shows pending order count in status messages
+
+#### Bot Instance
+- **Order status handling** - Differentiates between filled orders (status='closed') and pending orders (status='open')
+- **on_buy_order_placed() call** - Calls strategy method when order is placed but not filled
+- **State save on pending** - Saves state immediately after placing pending order
+
+#### CCXT Exchange
+- **Trailing order implementation** - Complete rewrite to use correct Binance US API format
+- **Parameter conversion** - Converts trailing percentage to BIPS automatically
+- **Order type selection** - Uses correct order type based on side (buy vs sell)
+- **Default timeframe** - Changed from '5m' to '1m' for market data fetching
+
+### Fixed - 2025-11-16
+
+#### Multiple Trailing Buy Orders
+- **Root cause** - Bot was placing multiple trailing buy orders without waiting for previous orders to fill
+- **Solution** - Implemented pending buy order tracking to prevent multiple simultaneous orders
+- **State persistence** - Pending orders survive bot restarts
+
+#### Binance US API Errors
+- **Too many parameters** - Fixed by using correct Binance US API format
+- **Missing stopLossOrTakeProfit** - Fixed by using correct order types (STOP_LOSS_LIMIT/TAKE_PROFIT_LIMIT)
+- **Wrong parameter names** - Changed from callbackRate to trailingDelta
+- **Wrong units** - Changed from percentage to basis points (BIPS)
+
+### Documentation - 2025-11-16
+
+#### Updated Documentation
+- **README.md** - Updated with trailing order details, indicator configuration, pending order tracking
+- **STRATEGY_ENHANCEMENTS.md** - Added detailed trailing order implementation, pending order tracking, indicator configuration
+- **STATE_PERSISTENCE_AND_RELIABILITY.md** - Added pending order tracking section, updated state persistence details
+- **CHANGELOG.md** - This comprehensive update
+
 ## [0.3.1] - 2025-11-03
 
 ### Fixed

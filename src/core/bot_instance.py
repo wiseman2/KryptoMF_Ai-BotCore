@@ -556,41 +556,101 @@ class BotInstance:
         """
         Check for filled orders and notify strategy.
 
-        This handles limit orders that weren't immediately filled.
+        This handles:
+        1. Pending buy orders (tracked in strategy.pending_buy_orders)
+        2. Pending sell orders (tracked in purchase.sell_order)
+        3. Any other open orders
         """
         try:
-            # Get all open orders (returns a list of order dicts)
+            # PRIORITY 1: Check pending buy orders from strategy
+            if hasattr(self.strategy, 'pending_buy_orders'):
+                pending_buy_orders = list(self.strategy.pending_buy_orders)  # Copy to avoid modification during iteration
+
+                for order_id in pending_buy_orders:
+                    # Skip if already notified
+                    if order_id in self.notified_orders:
+                        continue
+
+                    try:
+                        # Fetch order details
+                        order_details = self.exchange.get_order(order_id, self.symbol)
+
+                        if order_details and order_details.get('status') == 'closed':
+                            logger.info(f"[{self.name}] ✓ Pending buy order {order_id} filled")
+
+                            # Notify strategy
+                            self.strategy.on_order_filled(order_details)
+
+                            # Mark as notified
+                            self.notified_orders.add(order_id)
+
+                            # Save state after order fill
+                            self._save_state()
+                            logger.info(f"[{self.name}] State saved after buy order filled")
+
+                    except Exception as e:
+                        logger.error(f"[{self.name}] Error checking pending buy order {order_id}: {e}")
+
+            # PRIORITY 2: Check pending sell orders from purchases
+            if hasattr(self.strategy, 'purchases'):
+                for purchase in self.strategy.purchases:
+                    sell_order = purchase.get('sell_order', {})
+                    order_id = sell_order.get('order_id')
+
+                    # Only check if order is active and not already notified
+                    if order_id and sell_order.get('status') == 'active' and order_id not in self.notified_orders:
+                        try:
+                            # Fetch order details
+                            order_details = self.exchange.get_order(order_id, self.symbol)
+
+                            if order_details and order_details.get('status') == 'closed':
+                                logger.info(f"[{self.name}] ✓ Pending sell order {order_id} filled")
+
+                                # Notify strategy
+                                self.strategy.on_order_filled(order_details)
+
+                                # Mark as notified
+                                self.notified_orders.add(order_id)
+
+                                # Update profit stats
+                                self._update_profit_stats()
+
+                                # Save state after order fill
+                                self._save_state()
+                                logger.info(f"[{self.name}] State saved after sell order filled")
+
+                        except Exception as e:
+                            logger.error(f"[{self.name}] Error checking pending sell order {order_id}: {e}")
+
+            # PRIORITY 3: Check any other open orders (legacy support)
             open_orders = self.exchange.get_open_orders(self.symbol)
 
-            if not open_orders:
-                return
+            if open_orders:
+                for order in open_orders:
+                    order_id = order.get('id')
 
-            # Check each order
-            for order in open_orders:
-                order_id = order.get('id')
+                    # Skip if we've already notified strategy about this order
+                    if order_id in self.notified_orders:
+                        continue
 
-                # Skip if we've already notified strategy about this order
-                if order_id in self.notified_orders:
-                    continue
+                    # Fetch latest order details
+                    order_details = self.exchange.get_order(order_id, self.symbol)
 
-                # Fetch latest order details
-                order_details = self.exchange.get_order(order_id, self.symbol)
+                    if order_details and order_details.get('status') == 'closed':
+                        logger.info(f"[{self.name}] Order {order_id} filled")
 
-                if order_details and order_details.get('status') == 'closed':
-                    logger.info(f"[{self.name}] Order {order_id} filled")
+                        # Notify strategy
+                        self.strategy.on_order_filled(order_details)
 
-                    # Notify strategy
-                    self.strategy.on_order_filled(order_details)
+                        # Mark as notified
+                        self.notified_orders.add(order_id)
 
-                    # Mark as notified
-                    self.notified_orders.add(order_id)
+                        # Update profit stats if it was a sell order
+                        if order.get('side') == 'sell':
+                            self._update_profit_stats()
 
-                    # Update profit stats if it was a sell order
-                    if order.get('side') == 'sell':
-                        self._update_profit_stats()
-
-                    # Save state after order fill
-                    self._save_state()
+                        # Save state after order fill
+                        self._save_state()
 
         except Exception as e:
             logger.error(f"[{self.name}] Error checking filled orders: {e}")

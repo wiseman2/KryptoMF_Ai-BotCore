@@ -24,10 +24,14 @@ Implements the advanced DCA logic from the original multibot where profit from s
 - **Profit Application Logic**: When a purchase is sold at a profit, the excess profit (after minimum profit threshold) is applied to the previous purchase
 - **Cost Basis Reduction**: Lowers the average cost of earlier purchases, making them easier to sell at profit
 - **Indicator-Based Buying**: Uses configurable technical indicators instead of time-based intervals
+- **Pending Buy Order Tracking**: Prevents multiple simultaneous buy orders while waiting for trailing orders to fill
+- **Comprehensive Purchase Records**: Stores complete buy/sell order info, fees, timestamps, profit
+- **Historical Trade Logging**: Completed trades saved to JSONL files for review and analysis
 - **Configurable Parameters**:
   - `min_profit_percent`: Minimum profit before applying DCA (default: 0.5%)
   - `dca_pool_percent`: Percentage of excess profit to apply (default: 100%)
   - `max_purchases`: Maximum number of active purchases (default: -1 for unlimited)
+  - `indicator_agreement`: Percentage of indicators that must agree (default: 0.6 = 60%)
 
 ### Example
 ```
@@ -109,7 +113,7 @@ grid_trading:
 
 ### Implementation
 - **Base Plugin** (`exchange_plugin.py`): Added `place_trailing_order()` and `supports_trailing_orders()` methods
-- **CCXT Exchange** (`ccxt_exchange.py`): Implemented Binance/Binance.US trailing order support
+- **CCXT Exchange** (`ccxt_exchange.py`): Implemented Binance/Binance.US trailing order support using correct API format
 
 ### Supported Exchanges
 - Binance
@@ -117,33 +121,85 @@ grid_trading:
 - Binance USD-M Futures
 - Binance COIN-M Futures
 
+### Binance/Binance.US API Format
+The bot uses the correct Binance US API format for trailing orders:
+
+**Buy Orders (Trailing Down):**
+- Order Type: `STOP_LOSS_LIMIT`
+- Parameter: `trailingDelta` in basis points (BIPS) where 100 BIPS = 1%
+- Behavior: Trails price DOWN to buy at a lower price
+
+**Sell Orders (Trailing Up):**
+- Order Type: `TAKE_PROFIT_LIMIT`
+- Parameter: `trailingDelta` in basis points (BIPS)
+- Behavior: Trails price UP to sell at a higher price
+
+**Example:**
+```python
+# 0.3% trailing buy order
+trailing_delta_bips = int(0.3 * 100)  # = 30 BIPS
+
+order = exchange.create_order(
+    symbol='ZEC/USDT',
+    type='STOP_LOSS_LIMIT',
+    side='buy',
+    amount=0.01,
+    price=700.00,  # Limit price
+    params={
+        'stopPrice': 700.00,  # Activation price
+        'trailingDelta': 30,  # 0.3% in BIPS
+        'timeInForce': 'GTC'
+    }
+)
+```
+
+### Pending Order Tracking
+The bot now tracks pending buy orders to prevent placing multiple simultaneous orders:
+
+**How It Works:**
+1. When a trailing buy order is placed, `on_buy_order_placed()` is called
+2. Order ID is added to `pending_buy_orders` list
+3. Strategy returns 'hold' signal while pending orders exist
+4. When order fills, `on_order_filled()` removes it from pending list
+5. Bot can then place next order if signals align
+
+**State Persistence:**
+- Pending buy orders are saved to state file
+- Restored on bot restart
+- Prevents duplicate orders after crashes
+
 ### Key Features
 - **Exchange-Native Orders**: Places trailing orders directly on the exchange
 - **Protection Against Failures**: Orders persist through power outages, internet issues, computer crashes
-- **Configurable Trailing Percent**: Adjustable trailing percentage per order
-- **Fallback Support**: Raises clear error if exchange doesn't support trailing orders
+- **Pending Order Prevention**: Tracks pending buy orders to prevent multiple simultaneous orders
+- **Configurable Trailing Percent**: Adjustable trailing percentage per order (converted to BIPS)
+- **Automatic Fill Detection**: Bot monitors orders and triggers sell placement when buy fills
+- **State Persistence**: Pending orders survive bot restarts
 
-### Usage Example
-```python
-# Check if exchange supports trailing orders
-if exchange.supports_trailing_orders():
-    # Place trailing sell order
-    order = exchange.place_trailing_order(
-        symbol='BTC/USD',
-        side='sell',
-        amount=0.1,
-        trailing_percent=1.0  # 1% trailing
-    )
+### Configuration Example
+```yaml
+buy_order_type: trailing_market  # or trailing_limit
+trailing_buy_percent: 0.3  # 0.3% trailing distance (30 BIPS)
+
+sell_order_type: trailing_market  # or trailing_limit
+trailing_sell_percent: 0.3  # 0.3% trailing distance (30 BIPS)
 ```
 
 ### Based On
 - `reference/oldCryptoProject/KryptoMFG/BuyAndSell.py` lines 484-516 (trailing order implementation)
+- `reference/binance_us_orders.txt` - Binance US API documentation
+- `reference/ccxt_trailing_orders.txt` - CCXT trailing order documentation
 
 ### Important Notes
 ⚠️ **ALWAYS place trailing sell orders immediately after buy orders complete**
 - This protects your position even if the bot crashes
 - Exchange-placed orders are more reliable than bot-managed orders
 - User's original practice: "as soon as I made a buy, I would immediately place the trailing sell on binance_us"
+
+⚠️ **Only ONE pending buy order at a time**
+- Bot tracks pending buy orders to prevent placing multiple orders
+- Strategy returns 'hold' signal while pending orders exist
+- Prevents overtrading and duplicate positions
 
 ---
 
@@ -153,13 +209,61 @@ if exchange.supports_trailing_orders():
 Provides reusable technical analysis indicators for all strategies.
 
 ### Indicators Implemented
-- **RSI** (Relative Strength Index): Oversold/overbought detection
+- **RSI** (Relative Strength Index): Oversold/overbought detection with optional rising check
 - **Stochastic RSI**: More sensitive momentum indicator
-- **EMA** (Exponential Moving Average): Trend detection
-- **MACD** (Moving Average Convergence Divergence): Trend and momentum
+- **EMA** (Exponential Moving Average): Trend detection (buy when price below EMA)
+- **MACD** (Moving Average Convergence Divergence): Trend and momentum with optional rising check
 - **MFI** (Money Flow Index): Volume-weighted momentum
 - **Price Drop Detection**: Percentage drop over lookback period
-- **Price Rising Detection**: Recent price momentum
+- **Price Rising Detection**: Recent price momentum (checks last 3 candles)
+
+### Fully Configurable Parameters
+All indicator parameters are configurable from the YAML config file:
+
+**RSI:**
+- `period`: Calculation period (default: 14)
+- `oversold`: Oversold threshold (default: 35)
+- `overbought`: Overbought threshold (default: 55)
+- `check_rising`: Wait for RSI to reverse upward (default: true)
+
+**MACD:**
+- `fast`: Fast EMA period (default: 12)
+- `slow`: Slow EMA period (default: 26)
+- `signal`: Signal line period (default: 9)
+- `check_rising`: Wait for MACD to turn upward (default: true)
+
+**Stochastic RSI:**
+- `period`: RSI period (default: 14)
+- `smoothing`: Smoothing period (default: 3)
+- `oversold`: Oversold threshold (default: 33)
+- `overbought`: Overbought threshold (default: 80)
+
+**MFI:**
+- `period`: Calculation period (default: 14)
+- `oversold`: Oversold threshold (default: 25)
+
+**EMA:**
+- `length`: EMA period (default: 25)
+
+**Price Drop:**
+- `drop_percent`: Required drop percentage (default: 1.0)
+- `lookback_candles`: Lookback period (default: 24)
+
+**Price Rising:**
+- No parameters - checks if last 3 candles are rising
+
+### Indicator Agreement
+The strategy uses an `indicator_agreement` threshold to determine when to buy:
+
+```yaml
+indicator_agreement: 0.6  # 60% of enabled indicators must agree
+```
+
+**Example:**
+- 5 indicators enabled
+- 3 give buy signals, 2 give hold signals
+- Agreement: 3/5 = 60% ✅ Buy signal generated
+- If only 2 gave buy signals: 2/5 = 40% ❌ Hold
 
 ### Library Used
 - `ta` (Technical Analysis library) - NOT pandas_ta
@@ -172,12 +276,24 @@ from plugins.indicators import TechnicalIndicators
 if TechnicalIndicators.is_rsi_oversold(df, period=14, oversold_level=30):
     print("RSI is oversold - potential buy signal")
 
+# Check if RSI is rising (momentum reversal)
+if TechnicalIndicators.is_rsi_rising(df, period=14):
+    print("RSI is rising - downtrend may be reversing")
+
 # Get MACD values
-macd, signal, histogram = TechnicalIndicators.get_macd(df)
+macd, signal, histogram = TechnicalIndicators.get_macd(df, fast=12, slow=26, signal=9)
+
+# Check if MACD is rising
+if TechnicalIndicators.is_macd_rising(df, fast=12, slow=26, signal=9):
+    print("MACD is rising - bullish momentum")
 
 # Check if price has dropped
 if TechnicalIndicators.has_price_dropped(df, lookback=24, drop_percent=1.0):
     print("Price has dropped 1% in last 24 candles")
+
+# Check if price is rising
+if TechnicalIndicators.is_price_rising(df):
+    print("Price is rising in last 3 candles")
 ```
 
 ---

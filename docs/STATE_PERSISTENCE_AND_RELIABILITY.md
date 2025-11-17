@@ -24,30 +24,38 @@ The bot now includes enterprise-grade reliability features to ensure:
 The bot automatically saves its complete state to disk, including:
 
 1. **Purchase History**
-   - Buy price, amount, cost, timestamp
-   - Associated fees
+   - Complete buy order information (ID, price, amount, cost, timestamp, fees)
+   - Complete sell order information (ID, price, amount, timestamp, fees)
+   - Purchase metadata (cost basis, DCA applied, profit/loss)
    - Purchase count and totals
 
-2. **Pending Sell Orders**
-   - Target sell price
-   - Profit target
-   - Order status (pending, filled, cancelled)
-   - Sell order details when filled
+2. **Pending Buy Orders**
+   - List of order IDs for pending buy orders
+   - Prevents multiple simultaneous buy orders
+   - Restored on bot restart
 
-3. **Trailing State** (for bot-managed trailing)
+3. **Pending Sell Orders** (tracked within each purchase)
+   - Sell order status (pending, active, pending_market, pending_trail, trailing_active, filled, cancelled, error)
+   - Sell order type (limit, market, trailing_market, trailing_limit, trailing_stop)
+   - Target sell price and profit target
+   - Order ID and client order ID (when placed)
+   - Complete sell order details when filled
+   - Activation price for trailing orders
+
+4. **Trailing State** (for bot-managed trailing)
    - Trailing status (inactive, waiting, active, triggered)
    - Direction (up for sells, down for buys)
    - Activation price
    - Current watermark (highest/lowest price seen)
    - Trailing percentage
 
-4. **Bot Statistics**
+5. **Bot Statistics**
    - Total trades
    - Win/loss ratio
-   - Total profit
+   - Total profit and DCA applied
    - Current positions
 
-5. **Connectivity Status**
+6. **Connectivity Status**
    - Last successful connection
    - Failure count
 
@@ -56,10 +64,11 @@ The bot automatically saves its complete state to disk, including:
 State is saved automatically in multiple scenarios:
 
 1. **After Every Purchase** - Immediate save when buy order fills
-2. **After Every Sell** - Immediate save when sell order fills
-3. **Periodic Auto-Save** - Every 60 seconds (configurable)
-4. **On Bot Stop** - Final state save when bot shuts down
-5. **After Connectivity Issues** - Save after resetting trailing state
+2. **After Pending Buy Order Placed** - Immediate save to track pending order
+3. **After Every Sell** - Immediate save when sell order fills
+4. **Periodic Auto-Save** - Every 60 seconds (configurable)
+5. **On Bot Stop** - Final state save when bot shuts down
+6. **After Connectivity Issues** - Save after resetting trailing state
 
 ### State File Location
 
@@ -220,7 +229,127 @@ After connectivity failures, the bot uses exponential backoff:
 
 ---
 
+## 📋 Pending Order Tracking
+
+### Pending Buy Orders
+
+The bot tracks pending buy orders to prevent placing multiple simultaneous orders while waiting for trailing orders to fill.
+
+**Problem Solved:**
+When a trailing buy order is placed on the exchange, it has status `'open'` (not `'closed'`). Without tracking, the bot would see the same buy signal every iteration and place multiple orders.
+
+**How It Works:**
+
+1. **Order Placed** → `on_buy_order_placed()` called
+   - Order ID added to `pending_buy_orders` list
+   - State saved to disk
+
+2. **Strategy Analysis** → Checks for pending orders
+   - If `pending_buy_orders` is not empty, return 'hold' signal
+   - Prevents new buy signals while waiting for fill
+
+3. **Order Fills** → `on_order_filled()` called
+   - Order ID removed from `pending_buy_orders` list
+   - Purchase added to active purchases
+   - Sell order placed immediately
+
+4. **State Persistence**
+   - Pending orders saved to state file
+   - Restored on bot restart
+   - Prevents duplicate orders after crashes
+
+**Example Flow:**
+```
+Iteration #1: Buy signal detected → Place trailing order #12345
+              → Add #12345 to pending_buy_orders
+              → Save state
+
+Iteration #2: Check pending_buy_orders → [#12345] exists
+              → Return 'hold' signal (don't place another order)
+
+Iteration #3: Check pending_buy_orders → [#12345] exists
+              → Return 'hold' signal
+
+Order #12345 fills → on_order_filled() called
+                   → Remove #12345 from pending_buy_orders
+                   → Add to purchases
+                   → Place sell order
+
+Iteration #4: Check pending_buy_orders → [] empty
+              → Can place new order if signals align
+```
+
+### Pending Sell Orders
+
+Sell orders are tracked differently - within each purchase object:
+
+**Sell Order Status Values:**
+- `'pending'` - Sell order not yet created (initial state)
+- `'active'` - Sell order placed on exchange (limit or exchange-native trailing)
+- `'pending_market'` - Market order waiting for price to reach target
+- `'pending_trail'` - Bot-managed trailing order waiting for activation price
+- `'trailing_active'` - Bot-managed trailing order actively tracking price
+- `'filled'` - Sell order completed
+- `'cancelled'` - Sell order cancelled
+- `'error'` - Error placing sell order
+
+**Purchase Object Structure:**
+```python
+purchase = {
+    # Buy order info
+    'buy_order': {
+        'order_id': '12345',
+        'price': 700.00,
+        'amount': 0.01,
+        'cost': 7.00,
+        'fee': 0.007,
+        'timestamp': 1700000000,
+        'order_info': {...}  # Complete order details
+    },
+
+    # Sell order tracking
+    'sell_order': {
+        'status': 'active',  # Current status
+        'type': 'trailing_market',
+        'target_price': 707.00,
+        'order_id': '12346',
+        'client_order_id': 'abc123',
+        'filled_price': None,
+        'filled_timestamp': None,
+        'filled_amount': None,
+        'order_info': {...}  # Complete order details when placed
+    },
+
+    # Purchase metadata
+    'cost': 7.00,
+    'amount': 0.01,
+    'sell_price': 707.00,
+    'dca_applied': 0.0,
+    'profit': None  # Set when sold
+}
+```
+
+**Why Different Tracking?**
+- **Buy Orders**: Only ONE pending buy order at a time (controls entry)
+- **Sell Orders**: MULTIPLE sell orders active (one per open position)
+
+---
+
 ## 🎯 Trailing State Management
+
+### Exchange-Native Trailing (Binance/Binance.US)
+
+For exchanges that support native trailing orders, the bot places orders directly on the exchange:
+
+**Advantages:**
+- Orders persist through bot crashes, power outages, internet issues
+- Exchange manages trailing logic (more reliable)
+- No need for bot to continuously monitor price
+
+**Implementation:**
+- Buy orders use `STOP_LOSS_LIMIT` type with `trailingDelta` parameter
+- Sell orders use `TAKE_PROFIT_LIMIT` type with `trailingDelta` parameter
+- Trailing distance specified in basis points (BIPS): 100 BIPS = 1%
 
 ### Bot-Managed Trailing
 
