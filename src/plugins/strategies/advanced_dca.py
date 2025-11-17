@@ -353,9 +353,12 @@ class AdvancedDCAStrategy(StrategyPlugin):
             last_purchase_price = self.purchases[-1]['price']
 
             # Calculate required step-down for this purchase
-            # Each purchase requires progressively larger drop
-            purchase_number = len(self.purchases) + 1  # Next purchase number
-            required_step = self.base_step_down * (self.step_down_multiplier ** (purchase_number - 2))
+            # Purchase #2 (first DCA): base_step_down (e.g., 1.0%)
+            # Purchase #3: base_step_down * multiplier (e.g., 1.5%)
+            # Purchase #4: base_step_down * multiplier^2 (e.g., 2.25%)
+            # Formula: For purchase N, step = base * multiplier^(N-2)
+            num_existing_purchases = len(self.purchases)
+            required_step = self.base_step_down * (self.step_down_multiplier ** (num_existing_purchases - 1))
             required_step = min(required_step, self.max_step_down)  # Cap at max
 
             price_drop_from_last = ((last_purchase_price - current_price) / last_purchase_price) * 100
@@ -457,8 +460,10 @@ class AdvancedDCAStrategy(StrategyPlugin):
         cost = order.get('cost', 0)
         amount = order.get('filled', 0)
         price = order.get('price', 0)
-        fee_info = order.get('fee') or {}
-        fee = float(fee_info.get('cost', 0) * 2)  # 2x fees (buy + sell)
+
+        # Get fee - if None or missing, use 0 (some pairs have no fees)
+        fee_info = order.get('fee')
+        fee = float((fee_info.get('cost', 0) if fee_info else 0) * 2)  # 2x fees (buy + sell)
 
         # Sell price = (cost + fees) * (1 + min_profit)
         sell_price = ((cost + fee) / amount) * (1 + self.min_profit_percent + 0.002)  # Add 0.2% buffer
@@ -476,7 +481,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
             'price': price,  # Average fill price
             'cost': cost,  # Total cost (amount * price)
             'fee': fee,
-            'fee_currency': fee_info.get('currency'),
+            'fee_currency': fee_info.get('currency') if fee_info else None,
 
             # Timestamps
             'timestamp': time.time(),
@@ -759,7 +764,11 @@ class AdvancedDCAStrategy(StrategyPlugin):
     def _handle_sell_filled(self, order: Dict[str, Any]):
         """Handle a filled sell order and apply profit to previous purchase."""
         sale_amount = order.get('cost', 0)  # Total revenue from sale
-        fee = order.get('fee', {}).get('cost', 0)
+
+        # Get fee - if None or missing, use 0 (some pairs have no fees)
+        fee_info = order.get('fee')
+        fee = fee_info.get('cost', 0) if fee_info else 0
+
         sold_amount = order.get('amount', 0)
         sell_order_id = order.get('id')
 
