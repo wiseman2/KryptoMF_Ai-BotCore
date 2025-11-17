@@ -22,11 +22,49 @@ strategy_params:
   grid_spacing: 2.5        # Percentage spacing between grid levels
   grid_levels: 10          # Number of grid levels
   position_size: 100       # Position size in USD per level
-  
+
   # DCA (if using dca strategy)
   # interval_hours: 24
   # amount_usd: 100
-  
+
+  # Advanced DCA (if using advanced_dca strategy)
+  # amount_usd: 10
+  # max_purchases: 5
+  # min_interval_hours: 0
+  # indicator_agreement: 0.6  # Percentage of indicators that must agree (0.6 = 60%)
+  # indicators:
+  #   price_drop:
+  #     enabled: false
+  #     drop_percent: 1.0
+  #     lookback_candles: 24
+  #   rising_price:
+  #     enabled: true
+  #   rsi:
+  #     enabled: true
+  #     period: 14
+  #     oversold: 35
+  #     overbought: 55
+  #     check_rising: true
+  #   stoch_rsi:
+  #     enabled: true
+  #     period: 14
+  #     smoothing: 3
+  #     oversold: 33
+  #     overbought: 80
+  #   ema:
+  #     enabled: true
+  #     length: 25
+  #   macd:
+  #     enabled: true
+  #     fast: 12
+  #     slow: 26
+  #     signal: 9
+  #     check_rising: true
+  #   mfi:
+  #     enabled: true
+  #     period: 14
+  #     oversold: 25
+
   # Momentum (if using momentum strategy)
   # lookback_periods: 14
   # threshold: 2.0

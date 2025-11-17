@@ -94,7 +94,8 @@ class ExchangePlugin(ABC):
         amount: float,
         trailing_percent: float,
         price: Optional[float] = None,
-        order_type: str = 'limit'
+        order_type: str = 'limit',
+        activation_price: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Place a trailing order (if supported by exchange).
@@ -112,6 +113,7 @@ class ExchangePlugin(ABC):
             trailing_percent: Percentage to trail (e.g., 1.0 for 1%)
             price: Initial price (optional, uses market price if None)
             order_type: 'limit' or 'market'
+            activation_price: Price at which trailing order becomes active
 
         Returns:
             Order details

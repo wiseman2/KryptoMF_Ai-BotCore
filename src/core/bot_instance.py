@@ -650,8 +650,9 @@ class BotInstance:
             # Update stats
             self.stats['total_trades'] += 1
 
-            # Notify strategy
+            # Notify strategy based on order status
             if order.get('status') == 'closed':
+                # Order filled immediately (market order or instant fill)
                 self.strategy.on_order_filled(order)
 
                 # Mark as notified
@@ -660,6 +661,15 @@ class BotInstance:
                 # Save state immediately after purchase
                 self._save_state()
                 logger.info(f"[{self.name}] State saved after purchase")
+            else:
+                # Order placed but not filled yet (limit, trailing, etc.)
+                # Notify strategy to track it as pending
+                if hasattr(self.strategy, 'on_buy_order_placed'):
+                    self.strategy.on_buy_order_placed(order)
+
+                    # Save state to persist pending order tracking
+                    self._save_state()
+                    logger.info(f"[{self.name}] State saved with pending buy order")
 
             # Notify GUI
             if self.on_trade_executed:

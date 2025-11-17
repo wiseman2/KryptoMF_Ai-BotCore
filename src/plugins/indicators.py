@@ -301,35 +301,27 @@ class TechnicalIndicators:
         return False
     
     @staticmethod
-    def is_price_rising(df: pd.DataFrame, lookback: int = 3, rise_percent: float = 0.5) -> bool:
+    def is_price_rising(df: pd.DataFrame) -> bool:
         """
-        Check if price has risen by a certain percentage at any point in the lookback period.
+        Check if price has risen since last period.
 
-        Loops through all values from -2 to -lookback and checks if current price is higher
-        than any of those past prices by the required percentage.
 
         Args:
             df: OHLCV DataFrame
             lookback: Number of candles to check (default: 3)
-            rise_percent: Minimum rise percentage (default: 0.5%)
 
         Returns:
-            True if price has risen by rise_percent or more from any point in lookback period
+            True if price has risen since last period
         """
-        if len(df) < lookback + 1:
+        if len(df) < 2:
             return False
 
         current_price = df['close'].values[-1]
+        past_price = df['close'].values[-2]
 
-        # Check each price from -2 to -lookback
-        for i in range(2, lookback + 1):
-            past_price = df['close'].values[-i]
-            # Calculate rise: (current_price - past_price) / past_price * 100
-            rise = abs((current_price - past_price) / past_price) * 100
-
-            # If current price is higher and rise meets threshold, return True
-            if current_price > past_price and rise >= rise_percent:
-                return True
+         # If current price is higher , return True
+        if current_price > past_price:
+            return True
 
         return False
 

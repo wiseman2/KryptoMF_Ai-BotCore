@@ -86,15 +86,53 @@ class AdvancedDCAStrategy(StrategyPlugin):
             self.price_drop_lookback = 24  # Default lookback
 
         # Indicator settings
-        self.use_rsi = self.params.get('use_rsi', True)
-        self.rsi_oversold = self.params.get('rsi_oversold', 35)
-        self.use_stoch_rsi = self.params.get('use_stoch_rsi', True)
-        self.stoch_oversold = self.params.get('stoch_oversold', 33)
-        self.use_ema = self.params.get('use_ema', True)
-        self.ema_length = self.params.get('ema_length', 25)
-        self.use_macd = self.params.get('use_macd', True)
-        self.use_mfi = self.params.get('use_mfi', True)
-        self.mfi_oversold = self.params.get('mfi_oversold', 25)
+        # Get indicator settings from nested config structure
+        indicators = self.params.get('indicators', {})
+
+        # Price drop indicator
+        price_drop_config = indicators.get('price_drop', {})
+        self.use_price_drop = price_drop_config.get('enabled', False)
+        self.price_drop_percent = price_drop_config.get('drop_percent', 1.0)
+        self.price_drop_lookback = price_drop_config.get('lookback_candles', 24)
+
+        # Rising price indicator
+        rising_price_config = indicators.get('rising_price', {})
+        self.use_rising_price = rising_price_config.get('enabled', True)
+
+        # RSI indicator
+        rsi_config = indicators.get('rsi', {})
+        self.use_rsi = rsi_config.get('enabled', True)
+        self.rsi_period = rsi_config.get('period', 14)
+        self.rsi_oversold = rsi_config.get('oversold', 35)
+        self.rsi_overbought = rsi_config.get('overbought', 55)
+        self.check_rsi_rising = rsi_config.get('check_rising', True)
+
+        # Stochastic RSI indicator
+        stoch_rsi_config = indicators.get('stoch_rsi', {})
+        self.use_stoch_rsi = stoch_rsi_config.get('enabled', True)
+        self.stoch_period = stoch_rsi_config.get('period', 14)
+        self.stoch_smoothing = stoch_rsi_config.get('smoothing', 3)
+        self.stoch_oversold = stoch_rsi_config.get('oversold', 33)
+        self.stoch_overbought = stoch_rsi_config.get('overbought', 80)
+
+        # EMA indicator
+        ema_config = indicators.get('ema', {})
+        self.use_ema = ema_config.get('enabled', True)
+        self.ema_length = ema_config.get('length', 25)
+
+        # MACD indicator
+        macd_config = indicators.get('macd', {})
+        self.use_macd = macd_config.get('enabled', True)
+        self.macd_fast = macd_config.get('fast', 12)
+        self.macd_slow = macd_config.get('slow', 26)
+        self.macd_signal = macd_config.get('signal', 9)
+        self.check_macd_rising = macd_config.get('check_rising', True)
+
+        # MFI indicator
+        mfi_config = indicators.get('mfi', {})
+        self.use_mfi = mfi_config.get('enabled', True)
+        self.mfi_period = mfi_config.get('period', 14)
+        self.mfi_oversold = mfi_config.get('oversold', 25)
 
         # Progressive step-down settings (based on profit target)
         # Base step-down is the smaller of profit target or 5%
@@ -112,6 +150,9 @@ class AdvancedDCAStrategy(StrategyPlugin):
         self.winning_trades = 0
         self.losing_trades = 0
         self.bot = None
+
+        # Pending buy orders (trailing orders waiting to be filled)
+        self.pending_buy_orders = []  # List of order IDs for pending buy orders
 
         # Backtest mode flag (reduces logging noise)
         self.is_backtest = False
@@ -215,7 +256,17 @@ class AdvancedDCAStrategy(StrategyPlugin):
                     }
                 }
 
-        # PRIORITY 2: Check if we've reached max purchases
+        # PRIORITY 2: Check for pending buy orders
+        if self.pending_buy_orders:
+            if not self.is_backtest:
+                logger.info(f"Pending buy orders: {len(self.pending_buy_orders)} - waiting for fill")
+            return {
+                'action': 'hold',
+                'confidence': 0.0,
+                'reason': f'Waiting for {len(self.pending_buy_orders)} pending buy order(s) to fill'
+            }
+
+        # PRIORITY 3: Check if we've reached max purchases
         if self.max_purchases != -1 and len(self.purchases) >= self.max_purchases:
             if not self.is_backtest:
                 logger.info(f"Max purchases reached ({len(self.purchases)}/{self.max_purchases})")
@@ -225,7 +276,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
                 'reason': f'Max purchases reached ({len(self.purchases)}/{self.max_purchases})'
             }
 
-        # PRIORITY 3: Evaluate indicators for BUY signal
+        # PRIORITY 4: Evaluate indicators for BUY signal
         buy_signals = []
         reasons = []
 
@@ -236,25 +287,41 @@ class AdvancedDCAStrategy(StrategyPlugin):
                 reasons.append(f"Price dropped {self.price_drop_percent}%")
             else:
                 buy_signals.append(False)
+
+        # Check if price is rising (optional)
+        if self.use_rising_price:
+            if TechnicalIndicators.is_price_rising(df):
+                buy_signals.append(True)
+                reasons.append(f"Price rising")
+            else:
+                buy_signals.append(False)
         
         # RSI oversold
         if self.use_rsi:
-            rsi, rising = TechnicalIndicators.get_rsi(df, period=14)
+            rsi, rising = TechnicalIndicators.get_rsi(df, period=self.rsi_period)
             if rsi <= self.rsi_oversold:
                 buy_signals.append(True)
                 reasons.append(f"RSI oversold ({rsi:.1f})")
             else:
                 buy_signals.append(False)
-        
+
+        # RSI rising
+        if self.use_rsi and self.check_rsi_rising:
+            if TechnicalIndicators.is_rsi_rising(df, period=self.rsi_period, lookback=3):
+                buy_signals.append(True)
+                reasons.append("RSI rising")
+            else:
+                buy_signals.append(False)
+
         # Stochastic RSI oversold
         if self.use_stoch_rsi:
-            if TechnicalIndicators.is_stoch_oversold(df, oversold_level=self.stoch_oversold):
+            if TechnicalIndicators.is_stoch_oversold(df, period=self.stoch_period, smooth=self.stoch_smoothing, oversold_level=self.stoch_oversold):
                 buy_signals.append(True)
-                stoch = TechnicalIndicators.get_stoch_rsi(df)
+                stoch = TechnicalIndicators.get_stoch_rsi(df, period=self.stoch_period, smooth=self.stoch_smoothing)
                 reasons.append(f"Stoch RSI oversold ({stoch:.1f})")
             else:
                 buy_signals.append(False)
-        
+
         # Price below EMA
         if self.use_ema:
             if TechnicalIndicators.is_price_below_ema(df, length=self.ema_length):
@@ -263,20 +330,20 @@ class AdvancedDCAStrategy(StrategyPlugin):
                 reasons.append(f"Price below EMA ({ema:.2f})")
             else:
                 buy_signals.append(False)
-        
+
         # MACD rising
-        if self.use_macd:
-            if TechnicalIndicators.is_macd_rising(df):
+        if self.use_macd and self.check_macd_rising:
+            if TechnicalIndicators.is_macd_rising(df, fast=self.macd_fast, slow=self.macd_slow, signal=self.macd_signal):
                 buy_signals.append(True)
                 reasons.append("MACD rising")
             else:
                 buy_signals.append(False)
-        
+
         # MFI oversold
         if self.use_mfi:
-            if TechnicalIndicators.is_mfi_oversold(df, oversold_level=self.mfi_oversold):
+            if TechnicalIndicators.is_mfi_oversold(df, period=self.mfi_period, oversold_level=self.mfi_oversold):
                 buy_signals.append(True)
-                mfi = TechnicalIndicators.get_mfi(df)
+                mfi = TechnicalIndicators.get_mfi(df, period=self.mfi_period)
                 reasons.append(f"MFI oversold ({mfi:.1f})")
             else:
                 buy_signals.append(False)
@@ -348,17 +415,38 @@ class AdvancedDCAStrategy(StrategyPlugin):
             }
         }
     
+    def on_buy_order_placed(self, order: Dict[str, Any]):
+        """
+        Track a pending buy order (called when order is placed but not yet filled).
+
+        This prevents the bot from placing multiple buy orders while waiting
+        for a trailing order to fill.
+
+        Args:
+            order: Order details
+        """
+        order_id = order.get('id')
+        if order_id and order_id not in self.pending_buy_orders:
+            self.pending_buy_orders.append(order_id)
+            logger.info(f"Tracking pending buy order: {order_id}")
+
     def on_order_filled(self, order: Dict[str, Any]):
         """
         Handle order fill event.
-        
+
         For buys: Add to purchases list
         For sells: Apply profit to previous purchase
-        
+
         Args:
             order: Order details
         """
         if order.get('side') == 'buy':
+            # Remove from pending list if it was there
+            order_id = order.get('id')
+            if order_id in self.pending_buy_orders:
+                self.pending_buy_orders.remove(order_id)
+                logger.info(f"Removed {order_id} from pending buy orders")
+
             self._handle_buy_filled(order)
         elif order.get('side') == 'sell':
             self._handle_sell_filled(order)
@@ -370,7 +458,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
         amount = order.get('filled', 0)
         price = order.get('price', 0)
         fee_info = order.get('fee', {})
-        fee = fee_info.get('cost', 0)
+        fee = float((fee_info.get('cost', 0)) * 2)  # 2x fees (buy + sell)
 
         # Sell price = (cost + fees) * (1 + min_profit)
         sell_price = ((cost + fee) / amount) * (1 + self.min_profit_percent + 0.002)  # Add 0.2% buffer
@@ -831,6 +919,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
         """
         return {
             'purchases': self.purchases,
+            'pending_buy_orders': self.pending_buy_orders,
             'total_profit': self.total_profit,
             'total_dca_applied': self.total_dca_applied,
             'winning_trades': self.winning_trades,
@@ -846,6 +935,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
             state: Saved state dictionary
         """
         self.purchases = state.get('purchases', [])
+        self.pending_buy_orders = state.get('pending_buy_orders', [])
         self.total_profit = state.get('total_profit', 0.0)
         self.total_dca_applied = state.get('total_dca_applied', 0.0)
         self.winning_trades = state.get('winning_trades', 0)
@@ -859,6 +949,7 @@ class AdvancedDCAStrategy(StrategyPlugin):
                            f"{self.trailing_state['direction']} from ${self.trailing_state.get('activation_price', 0):,.2f}")
 
         logger.info(f"State restored: {len(self.purchases)} active purchases, "
+                   f"{len(self.pending_buy_orders)} pending buy orders, "
                    f"${self.total_profit:,.2f} total profit, "
                    f"{self.winning_trades}W/{self.losing_trades}L, "
                    f"${self.total_dca_applied:,.2f} total DCA applied")

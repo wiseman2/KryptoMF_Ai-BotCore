@@ -317,7 +317,7 @@ class CCXTExchange(ExchangePlugin):
         logger.debug(f"Fetching open orders for {symbol or 'all symbols'}")
         return self.exchange.fetch_open_orders(symbol)
     
-    def get_market_data(self, symbol: str, timeframe: str = '5m', include_ohlcv: bool = True) -> Dict[str, Any]:
+    def get_market_data(self, symbol: str, timeframe: str = '1m', include_ohlcv: bool = True) -> Dict[str, Any]:
         """
         Get current market data (ticker) and OHLCV data for indicator calculations.
 
@@ -328,7 +328,7 @@ class CCXTExchange(ExchangePlugin):
 
         Args:
             symbol: Trading pair
-            timeframe: Timeframe for OHLCV data (default: '5m')
+            timeframe: Timeframe for OHLCV data (default: '1m')
             include_ohlcv: Whether to include OHLCV DataFrame (default: True)
 
         Returns:
@@ -482,7 +482,8 @@ class CCXTExchange(ExchangePlugin):
         trailing_percent: float,
         price: Optional[float] = None,
         order_type: str = 'limit',
-        trailing_delta: Optional[float] = None
+        trailing_delta: Optional[float] = None,
+        activation_price: Optional[float] = None
 
     ) -> Dict[str, Any]:
         """
@@ -499,6 +500,8 @@ class CCXTExchange(ExchangePlugin):
             trailing_percent: Percentage to trail (e.g., 1.0 for 1%)
             price: Initial price (optional, uses market price if None)
             order_type: 'limit' or 'market'
+            trailing_delta: Optional trailing delta in BIPS
+            activation_price: Price at which trailing order becomes active
 
         Returns:
             Order details
@@ -516,32 +519,49 @@ class CCXTExchange(ExchangePlugin):
 
         # Binance-style trailing orders
         if exchange_id in ['binance', 'binanceus', 'binanceusdm', 'binancecoinm']:
-            params = {
-                'trailingPercent': trailing_percent,  # Percentage away from current market price
-                # 'trailingDelta': (float(trailing_percent) * 100),  #The distance in BIPS (Basis Points, where 100 BIPS = 1%)
-                # that the price must move against the order's favor to trigger the stop. For example, a trailingDelta of 700 means
-                # the stop will trigger if the price moves 7% against the position.
-                # # 'trailingAmount': 100.0, # quote amount away from the current market price
-                # 'trailingTriggerPrice': act_price,  # the price to trigger activating a trailing stop order
-                'activationPrice': price, #The price at which the trailing stop order becomes active. If this is not set, the order
-                # starts trailing immediately at the current market price.
-                # 'reduceOnly': True,  # set to True if you want to close a position, set to False if you want to open a new position
-                "stopLossOrTakeProfit": "takeProfit",
-                # a stopLossOrTakeProfit exchange specific param was required for the implementation:
-                'stopPrice': price,     #The price at which the trailing stop order should activate. If you want it to start immediately,
-                # set it to the current market price
-                'callbackRate': trailing_percent,    #Specifies the trailing delta as a percentage (e.g., '0.2' for 0.2%).
-                'reduceOnly': True,  # Set to True to ensure this order only reduces a position
+            # Use activation_price if provided, otherwise fetch current market price
+            act_price = activation_price if activation_price is not None else price
 
-            }
+            if act_price is None:
+                ticker = self.exchange.fetch_ticker(symbol)
+                act_price = ticker.get('last')
+                logger.info(f"  Using current market price: ${act_price:,.2f}")
 
-            # For Binance, trailing orders are typically stop-loss or take-profit orders
+            # Binance US uses STOP_LOSS_LIMIT or TAKE_PROFIT_LIMIT with trailingDelta
+            # According to Binance docs:
+            # - type: STOP_LOSS_LIMIT or TAKE_PROFIT_LIMIT
+            # - stopPrice: The activation price (when trailing starts)
+            # - price: The limit price for the order
+            # - trailingDelta: The trailing distance in basis points (1% = 100 BIPS)
+            # - quantity: Amount to trade
+            # - timeInForce: GTC (Good Till Cancel)
+
+            # Convert percentage to basis points (BIPS): 1% = 100 BIPS
+            trailing_delta_bips = int(trailing_percent * 100)
+
+            # For buy orders: use STOP_LOSS_LIMIT (trails down to buy lower)
+            # For sell orders: use TAKE_PROFIT_LIMIT (trails up to sell higher)
             if side == 'sell':
-                # Trailing sell (stop-loss that trails up)
-                order_type_to_use = 'TRAILING_STOP_LIMIT'
+                order_type_to_use = 'limit'
             else:
-                # Trailing buy (less common, but supported)
-                order_type_to_use = 'TRAILING_STOP_MARKET'
+                order_type_to_use = 'limit'
+
+            # setup for Binance.us params for trailing orders
+            # Set up parameters for Binance trailing stop
+            if side=='buy':
+                 params = {
+                    'stopPrice': act_price,  # Activation price
+                    'trailingDelta': trailing_delta_bips,  # Trailing distance in BIPS
+                    'timeInForce': 'GTC',  # Good Till Cancel
+                    "stopLossOrTakeProfit": "stopLoss",  # a stopLossOrTakeProfit exchange specific param was required for the implementation:
+                }
+            else:
+                params = {
+                    'stopPrice': act_price,  # Activation price
+                    'trailingDelta': trailing_delta_bips,  # Trailing distance in BIPS
+                    'timeInForce': 'GTC',  # Good Till Cancel
+                    "stopLossOrTakeProfit": "takeProfit",  # a stopLossOrTakeProfit exchange specific param was required for the implementation:
+                }
 
             logger.info(f"Placing trailing {side} order: {amount} {symbol}")
             logger.info(f"  Trailing percent: {trailing_percent}%")
@@ -578,12 +598,18 @@ class CCXTExchange(ExchangePlugin):
                 return order
 
             try:
+                # For STOP_LOSS_LIMIT and TAKE_PROFIT_LIMIT orders:
+                # - price: The limit price (what price to execute at)
+                # - stopPrice: The activation/trigger price (in params)
+                # - trailingDelta: The trailing distance in BIPS (in params)
+
+                # Use activation price as the limit price (execute at activation price)
                 order = self.exchange.create_order(
                     symbol=symbol,
                     type=order_type_to_use,
                     side=side,
                     amount=amount,
-                    price=None,  # Market price for trailing orders
+                    price=act_price,  # Limit price for the order
                     params=params
                 )
 
