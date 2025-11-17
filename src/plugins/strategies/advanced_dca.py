@@ -457,8 +457,8 @@ class AdvancedDCAStrategy(StrategyPlugin):
         cost = order.get('cost', 0)
         amount = order.get('filled', 0)
         price = order.get('price', 0)
-        fee_info = order.get('fee', {})
-        fee = float((fee_info.get('cost', 0)) * 2)  # 2x fees (buy + sell)
+        fee_info = order.get('fee') or {}
+        fee = float(fee_info.get('cost', 0) * 2)  # 2x fees (buy + sell)
 
         # Sell price = (cost + fees) * (1 + min_profit)
         sell_price = ((cost + fee) / amount) * (1 + self.min_profit_percent + 0.002)  # Add 0.2% buffer
@@ -523,11 +523,11 @@ class AdvancedDCAStrategy(StrategyPlugin):
         logger.info(f"  Amount: {amount:.8f}")
         logger.info(f"  Cost: ${cost:,.2f}")
         logger.info(f"  Sell price: ${sell_price:,.2f}")
+        logger.info(f"  Sell order status: {purchase['sell_order']['status']}")
         logger.info(f"  Active purchases: {len(self.purchases)}")
         logger.info("=" * 60)
 
-        # Place sell order immediately after buy fills
-        self._place_sell_order(purchase)
+        # Note: Sell order will be placed by bot_instance._check_filled_orders() on next iteration
 
     def _place_sell_order(self, purchase: Dict[str, Any]):
         """
