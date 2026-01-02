@@ -128,3 +128,10 @@ class StrategyPlugin(ABC):
         """
         pass
 
+    def shutdown(self):
+        """
+        Called when the bot is stopping.
+        Override this to perform cleanup (e.g. flushing reporters).
+        """
+        pass
+

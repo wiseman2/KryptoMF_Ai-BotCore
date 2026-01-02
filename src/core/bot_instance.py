@@ -449,6 +449,10 @@ class BotInstance:
         self._save_state()
         logger.info(f"[{self.name}] Final state saved")
 
+        # Shutdown strategy (flush reporters, etc)
+        if self.strategy:
+            self.strategy.shutdown()
+
         # Disconnect
         if self.exchange:
             self.exchange.disconnect()

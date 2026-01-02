@@ -24,6 +24,11 @@ from plugins.base.strategy_plugin import StrategyPlugin
 from plugins.indicators import TechnicalIndicators
 from utils.logger import get_logger
 
+try:
+    from trade_reporter import AnonymousTradeReporter
+except ImportError:
+    AnonymousTradeReporter = None
+
 logger = get_logger(__name__)
 
 
@@ -177,6 +182,12 @@ class AdvancedDCAStrategy(StrategyPlugin):
             'trailing_percent': None,  # Trailing percentage
             'last_update': None  # Last time watermark was updated
         }
+
+        # Initialize trade reporter
+        self.reporter = None
+        if AnonymousTradeReporter:
+            reporting_enabled = config.get('reporting_enabled', True)
+            self.reporter = AnonymousTradeReporter(enabled=reporting_enabled)
         
         logger.info(f"Advanced DCA Strategy initialized:")
         logger.info(f"  Amount per purchase: ${self.amount_usd}")
@@ -919,6 +930,15 @@ class AdvancedDCAStrategy(StrategyPlugin):
 
         # Save completed purchase to historical file
         self._save_completed_purchase(sold_purchase, total_profit)
+
+        # Report trade to statistics server
+        if self.reporter:
+            self.reporter.report_trade({
+                'symbol': self.bot.symbol,
+                'profit': profit_for_stats,
+                'amount': sold_purchase.get('amount', 0),
+                'completed_timestamp': time.time()
+            })
     
     def _apply_dca_to_previous(self, dca_amount: float, sold_purchase: Dict[str, Any]):
         """
@@ -1101,6 +1121,14 @@ class AdvancedDCAStrategy(StrategyPlugin):
 
         # Recreate sell orders for purchases that don't have active sell orders
         self._restore_sell_orders()
+
+    def shutdown(self):
+        """
+        Called when the bot is stopping.
+        """
+        if self.reporter:
+            logger.info("Flushing trade reporter...")
+            self.reporter.flush()
 
     def _restore_sell_orders(self):
         """

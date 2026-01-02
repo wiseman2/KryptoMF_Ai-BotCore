@@ -16,6 +16,11 @@ from plugins.base.strategy_plugin import StrategyPlugin
 from plugins.indicators import TechnicalIndicators
 from utils.logger import get_logger
 
+try:
+    from trade_reporter import AnonymousTradeReporter
+except ImportError:
+    AnonymousTradeReporter = None
+
 logger = get_logger(__name__)
 
 
@@ -153,6 +158,12 @@ class DCAStrategy(StrategyPlugin):
         # Backtest mode flag (reduces logging noise)
         self.is_backtest = False
 
+        # Initialize trade reporter
+        self.reporter = None
+        if AnonymousTradeReporter:
+            reporting_enabled = config.get('reporting_enabled', True)
+            self.reporter = AnonymousTradeReporter(enabled=reporting_enabled)
+
         logger.info(f"Enhanced DCA Strategy initialized:")
         logger.info(f"  Amount: ${self.amount_usd} per purchase")
         logger.info(f"  Trading fees: {self.maker_fee}% maker, {self.taker_fee}% taker")
@@ -177,6 +188,14 @@ class DCAStrategy(StrategyPlugin):
         """
         self.bot = bot_instance
         logger.info("DCA Strategy ready")
+
+    def shutdown(self):
+        """
+        Called when the bot is stopping.
+        """
+        if self.reporter:
+            logger.info("Flushing trade reporter...")
+            self.reporter.flush()
 
     def _get_ohlcv_data(self, market_data: Dict[str, Any]):
         """
@@ -510,6 +529,27 @@ class DCAStrategy(StrategyPlugin):
                 logger.info(f"  Amount: {order.get('filled'):.8f}")
                 logger.info(f"  Revenue: ${order.get('cost'):,.2f}")
                 logger.info("=" * 60)
+
+                # Report trade
+                if self.reporter:
+                    revenue = order.get('cost', 0)
+                    cost = self.pending_sell_order.get('buy_cost', 0)
+                    # Estimate fees if not provided (approximate)
+                    fee_cost = 0
+                    if 'fee' in order:
+                        fee_cost = order['fee'].get('cost', 0)
+                    else:
+                        # Estimate based on configured fee
+                        fee_cost = revenue * (self.taker_fee / 100)
+                    
+                    profit = revenue - cost - fee_cost
+                    
+                    self.reporter.report_trade({
+                        'symbol': self.bot.symbol if self.bot else 'Unknown',
+                        'profit': profit,
+                        'amount': order.get('filled', 0),
+                        'completed_timestamp': time.time()
+                    })
     
     def get_state(self) -> Dict[str, Any]:
         """

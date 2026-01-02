@@ -164,12 +164,9 @@ def main():
                 exchange_id = config.get('exchange', 'binance')
 
                 # Map exchange names to ccxt IDs
-                exchange_map = {
-                    'binance_us': 'binanceus',
-                    'coinbase': 'coinbasepro',
-                    'coinbase_pro': 'coinbasepro'
-                }
-                ccxt_exchange_id = exchange_map.get(exchange_id, exchange_id)
+                # Use the centralized exchange map
+                from plugins.exchanges.ccxt_exchange import CCXTExchange
+                ccxt_exchange_id = CCXTExchange.EXCHANGE_ID_MAP.get(exchange_id, exchange_id)
 
                 try:
                     fetcher = HistoricalDataFetcher(ccxt_exchange_id)
